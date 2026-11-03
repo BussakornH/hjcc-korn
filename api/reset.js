@@ -1,7 +1,7 @@
 "use strict";
 const L = require("./_lib");
 
-/* POST { scope: "t1" | "t2" | "all" }  -> wipe everything shared for the topic(s): troops on the map, the delegates' copied forces, battle lines, city sides, sides by day.
+/* POST { scope: "t1" | "t2" | "all" }  -> wipe everything shared for the topic(s): troops on the map, the delegates' copied forces, battle lines, city sides, sides by day, morale.
    It also stamps a new "epoch"; every browser that sees a new epoch clears its own forces for that topic the next time it loads.   (admin) */
 module.exports = L.wrap(async (req, res) => {
   const me = await L.session(req);
@@ -13,7 +13,7 @@ module.exports = L.wrap(async (req, res) => {
   if (!topics.length) return L.send(res, 400, { error: "scope" });
   const users = Object.keys(await L.db.accounts()), stamp = Date.now();
   for (const t of topics) {
-    for (const k of ["troops:" + t, "lines:" + t, "citysides:" + t, "days:" + t]) await L.db.setKv(k, null);
+    for (const k of ["troops:" + t, "lines:" + t, "citysides:" + t, "days:" + t, "morale:" + t]) await L.db.setKv(k, null);
     for (const u of users) await L.db.setKv("forces:" + t + ":" + u, null);
     await L.db.setKv("epoch:" + t, stamp);
   }
