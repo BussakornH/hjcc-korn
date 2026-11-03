@@ -8,7 +8,7 @@ const MPCFG = {
   t2: { lon: [-11, 48], lat: [30, 63.5], url: "borders-1914.json", rename: { "United Kingdom of Great Britain and Ireland": "United Kingdom" },
     side: { "France": "L", "United Kingdom of Great Britain and Ireland": "L", "Russian Empire": "L", "Kingdom of Italy": "L", "Belgium": "L", "Serbia": "L", "Romania": "L", "Greece": "L", "German Empire": "R", "Austro-Hungarian Empire": "R", "Ottoman Empire": "R", "Bulgaria": "R" } }
 };
-let mpPaneL = true, mpPaneR = true, mpTerrOpen = false, mpDEM = {}, MPREL = {}, mpTD = null, mpTerr = true, mpCity = null, MPLAND = null, MPB = {}, LN = null, MPBASE = {}, MPV = null, MPT = null, mpTool = "edit", mpSel = null, mpVx = null, mpDraft = [], mpLoad = 0, mpDragged = false, mpDrag = null;
+let mpTerrOpen = false, mpDEM = {}, MPREL = {}, mpTD = null, mpTerr = true, mpCity = null, MPLAND = null, MPB = {}, LN = null, MPBASE = {}, MPV = null, MPT = null, mpTool = "edit", mpSel = null, mpVx = null, mpDraft = [], mpLoad = 0, mpDragged = false, mpDrag = null;
 
 /* every map is 1000 units wide, so text and points look the same size on both topics; sc is units per degree of latitude */
 const mpGeo = t => { const c = MPCFG[t], k = Math.cos(((c.lat[0] + c.lat[1]) / 2) * Math.PI / 180), sc = 1000 / ((c.lon[1] - c.lon[0]) * k); return { c, k, sc, lon0: c.lon[0], top: c.lat[1], W: 1000, H: (c.lat[1] - c.lat[0]) * sc }; };
@@ -227,8 +227,8 @@ function pgMap() {
   const zoom = `<div class="mp-zoom"><button class="btn sm" data-a="mapZoom" data-z="1.3" aria-label="Zoom in">${ico("plus")}</button><button class="btn sm" data-a="mapZoom" data-z="0.77" aria-label="Zoom out">−</button><button class="btn sm" data-a="mapZoom" data-z="0">Fit</button><button class="btn sm${mpTerr ? " on" : ""}" data-a="mapTerr">Terrain</button></div>`;
   const legend = `<div class="mp-key"><span><i class="k-line"></i>Battle line</span><span><i class="k-riv"></i>River</span><span><i class="k-for"></i>Forest</span><span><i class="k-el"></i>Low to high ground</span><span><i class="k-dot"></i>Key city</span><span><i class="k-dot me"></i>${esc(chair ? sideLbl("me") : t === "t2" ? "Allied" : "France")}</span><span><i class="k-dot foe"></i>${esc(chair ? sideLbl("foe") : t === "t2" ? "Central" : "England")}</span><span>Zoom in for more cities</span></div>`;
   setTimeout(() => mpLabels(document.querySelector(".mapsvg")), 0);
-  const pane = (c, side) => { const open = c === "L" ? mpPaneL : mpPaneR; return `<aside class="mp-ov mp-${c}${open ? "" : " shut"}"><button class="mp-tab" data-a="mapPane" data-c="${c}" aria-expanded="${open}">${esc(sideLbl(side))} <span aria-hidden="true">${(c === "L") === open ? "‹" : "›"}</span></button><div class="mp-tl-in">${mpTroopCol(t, c)}</div></aside>`; };
-  return head + `<div class="mp-wrap">${chair ? mpChairBar(t) : mpViewBar(t)}<div class="mp-board"><div class="mp-stage"><div class="mp-view">${zoom}${svg}</div>${pane("L", "me")}${pane("R", "foe")}</div>${legend}</div><div class="mp-foot">${mpTerrCard()}</div></div>`;
+  const col = c => `<aside class="mp-tl mp-${c}"><div class="mp-tl-in">${mpTroopCol(t, c)}</div></aside>`;
+  return head + `<div class="mp-wrap">${chair ? mpChairBar(t) : mpViewBar(t)}<div class="mp-main">${col("L")}<div class="mp-board"><div class="mp-stage"><div class="mp-view">${zoom}${svg}</div></div>${legend}</div>${col("R")}</div><div class="mp-foot">${mpTerrCard()}</div></div>`;
 }
 
 const mpTerrCard = () => `<section class="panel mp-card"><div class="panel-h" style="margin:0"><div><h3>Terrain</h3><p>What the ground does to a force</p></div><button class="btn sm" data-a="mapTerrCard" aria-expanded="${mpTerrOpen}">${mpTerrOpen ? "Hide" : "Show"}</button></div>${mpTerrOpen ? `<div style="margin-top:10px">${((window.SENTINEL_TERRAIN || {}).effects || []).map(e => `<div class="tr-fx"><i class="k-${e.k}"></i><div><b>${esc(e.n)}</b><span>${esc(e.move)}</span><span>${esc(e.fight)}</span></div></div>`).join("")}<p class="muted" style="margin-top:10px">Suggested values: put them in the Situational multiplier of the Combat Calculator. The chairs rule on any crossing.</p></div>` : ""}</section>`;
@@ -255,7 +255,6 @@ function mpChairBar(t) {
 }
 
 const MAPA = {
-  mapPane: el => { if (el.dataset.c === "L") mpPaneL = !mpPaneL; else mpPaneR = !mpPaneR; render(); },
   mapTool: el => { mpTool = el.dataset.t; mpDraft = []; mpVx = null; mpCity = null; mpPlace = null; render(); },
   mapZoom: el => {
     const z = Number(el.dataset.z), g = mpGeo(S.topic); if (!z) { MPV = mpFit(g); render(); return; }
