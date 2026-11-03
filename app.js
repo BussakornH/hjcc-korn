@@ -612,7 +612,7 @@ function pgOverview() {
   const lastLog = d.log[0] ? `${ago(d.log[0].t)}: ${esc(d.log[0].m)}` : "Nothing recorded yet";
   const lastBattle = d.battles[0] ? `${plural(d.battles.length, "battle")} · last at ${hhmm(d.battles[0].t)}: ${esc(d.battles[0].att[0].name)} v ${esc(d.battles[0].def[0].name)}, ${fx(d.battles[0].dmg)} damage` : "No battles applied yet";
   const OVK = ["ov-trend", "ov-donut", "ov-types", "ov-ready", "ov-act", "ov-front", "ov-battles"];
-  return head("Forces overview", "", (DEL ? "" : seg("ovSide", [["me", sideLbl("me")], ["foe", sideLbl("foe") + " (estimate)"]], s, "s")) + foldAll(OVK)) + `
+  return head("Forces overview", "", (DEL ? "" : seg("ovSide", [["me", `${sideLbl("me")} · ${plural(tot("me").n, "unit")}`], ["foe", `${sideLbl("foe")} · ${plural(tot("foe").n, "unit")}`]], s, "s")) + foldAll(OVK)) + `
   <section class="ov-top">
     <div class="panel${foldCls("ov-trend")}">
       ${ph("ov-trend", "Force strength over time", "Every move, HP change and battle adds a point", seg("ovMetric", [["hp", "Hit points"], ["n", "Units"], ["atk", "Attack"]], M, "m"), `${strP}% combat strength · ${T.n} units in the field · ${T.lost} lost${d.rules.useMorale ? ` · morale ${fx(d.sides[s].morale)}%` : ""}`)}
@@ -620,7 +620,7 @@ function pgOverview() {
         <div class="ov-l">
           <div class="stat-big">${strP}<small>%</small></div><div class="stat-lbl">Combat strength of ${esc(sideLbl(s))} · ${fx(T.hp)} of ${fx(T.max)} HP</div>
           <div class="stat-big">${T.n}</div><div class="stat-lbl">Units in the field · ${T.lost} lost</div>
-          ${d.rules.useMorale ? `<div class="stat-big sm">${fx(d.sides[s].morale)}<small>%</small></div><div class="stat-lbl">Morale${s === "foe" ? " (your estimate)" : ""}</div>` : ""}
+          ${d.rules.useMorale ? `<div class="stat-big sm">${fx(d.sides[s].morale)}<small>%</small></div><div class="stat-lbl">Morale</div>` : ""}
           ${ROLE === "chair" ? "" : `<button class="btn primary" data-a="go" data-p="roster">${ico("shield")} Battle overview</button>`}
         </div>
         <div class="ov-r">
