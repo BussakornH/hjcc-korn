@@ -12,7 +12,7 @@ const CHARS = require("./_chars");
    POST { topic, hp: [{ id, hp }] } -> change the HP of troops on your own side   (a delegate, or staff). Applied on top of whatever is stored, never lost to a concurrent save.
    troop: { id, uid, name, code, aff, side, lat, lon, hp, maxhp, atk, mov, rng, lost } */
 const TOPIC = ["t1", "t2"], MAX = 200;
-const CODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF"];
+const CODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "XBW", "HOB", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF"];
 const AFF = ["blue", "red", "neutral-green", "neutral-violet", "neutral-slate"];
 const n = (v, lo, hi) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v * 100) / 100)) : null; };
 const clean = (v) => {
