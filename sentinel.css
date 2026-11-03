@@ -207,3 +207,6 @@ input:disabled, select:disabled, textarea:disabled { opacity: .55; cursor: not-a
 :root[data-theme="dark"] .top-logo .lg-l { display: none; } :root[data-theme="dark"] .top-logo .lg-d { display: block; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .top-logo .lg-l { display: none; } :root:not([data-theme="light"]) .top-logo .lg-d { display: block; } }
 @media (max-width: 900px) { .top-logo { display: none; } }
+
+/* no "Saved on this device" text in the top bar; it only appears if saving actually fails */
+.save-state:not(.err) { display: none; }
