@@ -65,7 +65,6 @@
    "name": "Mechanized Infantry",
    "domain": "land",
    "topics": [
-    "t1",
     "t2"
    ]
   },
@@ -73,8 +72,21 @@
    "name": "Special Force",
    "domain": "land",
    "topics": [
-    "t1",
     "t2"
+   ]
+  },
+  "XBW": {
+   "name": "Crossbowmen",
+   "domain": "land",
+   "topics": [
+    "t1"
+   ]
+  },
+  "HOB": {
+   "name": "Hobelars",
+   "domain": "land",
+   "topics": [
+    "t1"
    ]
   },
   "CAV": {
@@ -117,7 +129,6 @@
    "name": "Marine Infantry",
    "domain": "land",
    "topics": [
-    "t1",
     "t2"
    ]
   },

@@ -284,7 +284,7 @@ function mpTroopCol(t, col) {
   const list = `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 6px"><div><h3>${chair ? "On the map" : esc(nm)}</h3><p>${on.length ? plural(on.length, "troop") + (chair ? "" : " on the map") : "No troops placed yet"}</p></div></div>${mpGroups(side, "map", on, x => x.code, x => { const pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0; return `<button class="trl-row${x.id === mpTS ? " on" : ""}${x.lost ? " dead" : ""}" data-a="mapTroop" data-id="${esc(x.id)}"><img src="symbols/${x.aff}/${esc(x.code)}.png" alt=""><span><b>${esc(x.name)}</b><em><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></em></span><small>${fx(x.hp)}/${fx(x.maxhp)}</small></button>`; })}</section>`;
   return card + kinds + list;
 }
-const MPCODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF"];
+const MPCODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "XBW", "HOB", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF"];
 
 Object.assign(MAPA, {
   mapTroop: el => { if (mpPlace) return; mpTS = el.dataset.id === mpTS ? null : el.dataset.id; mpRG = null;
