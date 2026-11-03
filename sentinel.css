@@ -87,11 +87,19 @@
 h1, h2, h3 { letter-spacing: -.02em; }
 .page h2 { font-weight: 700; }
 
-/* ---------- centered content column ---------- */
-.main { --col: 1440px; }
-.page { margin-inline: auto; max-width: var(--col); }
-.foot-note { margin-inline: auto; max-width: calc(var(--col) - 64px); width: calc(100% - 64px); }
-.top { padding-inline: max(32px, calc((100% - var(--col)) / 2 + 32px)); }
+/* ---------- full-width layout for PC and laptop: no centred column, content and top bar run edge to edge ---------- */
+.main { --col: none; }
+.page { margin-inline: 0; max-width: none; }
+.foot-note { margin-inline: 32px; max-width: none; width: auto; }
+.top { padding-inline: 32px; }
+@media (min-width: 901px) {
+  /* menu button pinned left, account + page centred, actions pinned right */
+  .top { display: grid; grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr); gap: 16px; }
+  .top .top-l { justify-self: start; }
+  .top .crumbs { text-align: center; max-width: 46vw; }
+  .top .crumbs div { text-overflow: ellipsis; }
+  .top .top-actions { justify-self: end; margin-left: 0; }
+}
 
 /* wordmark in serif, labels in mono */
 .brand b { font-family: "Source Serif 4", Georgia, serif; font-weight: 700; font-size: 19px; letter-spacing: .12em; }
@@ -191,7 +199,11 @@ input:disabled, select:disabled, textarea:disabled { opacity: .55; cursor: not-a
 :root[data-theme="dark"] .brand .lg-l { display: none; } :root[data-theme="dark"] .brand .lg-d { display: block; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .brand .lg-l { display: none; } :root:not([data-theme="light"]) .brand .lg-d { display: block; } }
 
-/* the battle map page runs edge to edge, so the top bar and footer line up with it instead of the centred column */
-.main:has(.mp-wrap) { --col: 100vw; }
-.main:has(.mp-wrap) .top { padding-inline: 20px; }
-.main:has(.mp-wrap) .foot-note { max-width: none; width: calc(100% - 40px); margin-inline: 20px; }
+/* logo in the top bar, so it stays visible while the side bar is folded away */
+.top-l { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.top-logo { display: flex; align-items: center; }
+.top-logo img { display: block; width: auto; height: 30px; }
+.top-logo .lg-d { display: none; }
+:root[data-theme="dark"] .top-logo .lg-l { display: none; } :root[data-theme="dark"] .top-logo .lg-d { display: block; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .top-logo .lg-l { display: none; } :root:not([data-theme="light"]) .top-logo .lg-d { display: block; } }
+@media (max-width: 900px) { .top-logo { display: none; } }
