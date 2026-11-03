@@ -371,6 +371,7 @@ const PAGES = [
   { id: "forces", name: "My Forces", icon: "layers" },
   { id: "board", name: "Order of Battle", icon: "board" },
   { id: "roster", name: "Battle Overview", icon: "shield" },
+  { id: "morale", name: "Morale", icon: "pulse" },
   { id: "map", name: "Battle Map", icon: "map" },
   { id: "combat", name: "Combat Calculator", icon: "swords" },
   { id: "sides", name: "Sides by day", icon: "board" },
@@ -379,7 +380,7 @@ const PAGES = [
 ];
 /* the Administrator runs the committee, not a side: accounts, access, topics and rules live in one control panel */
 const ADMIN_PAGES = [{ id: "status", name: "System status", icon: "pulse" }, { id: "control", name: "Control Panel", icon: "cog" }, { id: "sides", name: "Sides by day", icon: "board" }, { id: "rules", name: "Rules & Formulas", icon: "sliders" }];
-const pages = () => ROLE === "admin" ? ADMIN_PAGES : PAGES.filter(p => p.id !== "settings" && (p.id !== "rules" || ROLE === "chair") && (p.id !== "combat" || !DEL) && (p.id !== "forces" && p.id !== "roster" || ROLE !== "chair") && (p.id !== "sides" || ROLE === "chair"));   /* allocation setup is not shown to delegates or chairs; rules are for chairs and the admin */
+const pages = () => ROLE === "admin" ? ADMIN_PAGES : PAGES.filter(p => p.id !== "settings" && (p.id !== "rules" || ROLE === "chair") && (p.id !== "combat" || !DEL) && (p.id !== "forces" && p.id !== "roster" || ROLE !== "chair") && (p.id !== "sides" || ROLE === "chair") && (p.id !== "morale" || ROLE === "chair"));   /* allocation setup is not shown to delegates or chairs; rules are for chairs and the admin */
 const seg = (a, opts, cur, key) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button class="${v === cur ? "on" : ""}" data-a="${a}" data-${key}="${v}" aria-pressed="${v === cur}">${esc(l)}</button>`).join("")}</div>`;
 const swBtn = (k, on) => `<span class="sw-w">${on ? "ON" : "OFF"}<button class="sw ${on ? "on" : ""}" role="switch" aria-checked="${!!on}" aria-label="${esc(RULE_L[k] || k)}" data-a="rule" data-k="${k}"><i></i></button></span>`;
 const frontOpts = (cur, noLost) => D().fronts.filter(f => !(noLost && f.id === "lost")).map(f => `<option value="${f.id}" ${f.id === cur ? "selected" : ""}>${esc(f.name)}</option>`).join("");
@@ -389,7 +390,7 @@ const typeOpts = cur => D().branches.map(b => { const T = D().types.filter(t => 
 const EDIT_ACTS = new Set(["addUnits", "subAdd", "subEdit", "subDel", "sample", "hp", "hpSet", "frontAdd", "frontRename", "frontMove", "frontDel", "rule", "preset", "rtAdd", "rtDel", "rtReset", "dirAdd", "dirDel", "typeAdd", "typeDel", "typePush", "typesReset", "branchAdd", "branchDel", "sidePick", "imp", "clearForces", "resetTopic", "clearLog", "useTypeStats", "uDup", "uDel"]);   /* tray, swap, apply and undo are open to chairs: the combat calculator is theirs */
 const VIEW_INPUTS = new Set(["pick", "cm", "mult", "bonus", "q", "tv"]);
 function lockEdits(root) {
-  if (ROLE !== "chair" || !root || UI.page === "rules") return;
+  if (ROLE !== "chair" || !root || UI.page === "rules" || UI.page === "morale") return;
   root.querySelectorAll("[data-c],[data-i]").forEach(el => { if (!VIEW_INPUTS.has(el.dataset.c || el.dataset.i)) el.disabled = true; });
   root.querySelectorAll("[data-a]").forEach(b => { if (EDIT_ACTS.has(b.dataset.a)) { b.disabled = true; b.classList.add("locked"); b.title = "View only"; } });
 }
@@ -399,7 +400,7 @@ function lockPage() {
   if (UI.page === "rules" && ROLE === "delegate") {
     Array.prototype.forEach.call(pg.children, c => c.setAttribute("inert", ""));
     msg = "<b>View only.</b> Only the Admin can edit the rules and formulas. You can read them here and use them in the combat calculator.";
-  } else if (ROLE === "chair" && UI.page !== "rules" && UI.page !== "combat" && UI.page !== "sides" && UI.page !== "map") msg = "<b>View only.</b> Chairs can see everything in the tracker but cannot change it.";
+  } else if (ROLE === "chair" && UI.page !== "rules" && UI.page !== "combat" && UI.page !== "sides" && UI.page !== "map" && UI.page !== "morale") msg = "<b>View only.</b> Chairs can see everything in the tracker but cannot change it.";
   if (msg) pg.insertAdjacentHTML("afterbegin", '<div class="lockbar" role="note">' + msg + "</div>");
   pg.querySelectorAll("[data-need]").forEach(b => { if (ROLE !== "admin") { b.disabled = true; b.classList.add("locked"); b.title = "Admin access needed"; } });
   lockEdits(document);
@@ -408,7 +409,8 @@ function accessPanel() {
   const cols = ["delegate", "chair", "admin"], rows = [
     ["See forces, order of battle, battle overview and charts", [1, 1, 0]],
     ["Use the combat calculator and export a backup", [1, 1, 0]],
-    ["Add, edit and move units; apply battle results; set allocation, morale and fronts", [1, 0, 0]],
+    ["Add, edit and move units; apply battle results; set allocation and fronts", [1, 0, 0]],
+    ["Set the morale of each side", [0, 1, 0]],
     ["Edit rules, formulas, classes and sub classes", [0, 1, 1]],
     ["Create, reset and remove accounts", [0, 0, 1]]
   ], cap = x => x[0].toUpperCase() + x.slice(1);
@@ -543,7 +545,7 @@ function render() {
   try { if (fid && typeof a.selectionStart === "number") ss = [a.selectionStart, a.selectionEnd]; } catch (e) { /* not a text field */ }
   const keep = {}; document.querySelectorAll("[data-keep]").forEach(el => { keep[el.dataset.keep] = [el.scrollLeft, el.scrollTop]; });
   chrome();
-  const P = { map: pgMap, status: pgStatus, control: pgControl, sides: pgSides, overview: pgOverview, forces: pgForces, board: pgBoard, roster: pgRoster, combat: pgCombat, rules: pgRules, settings: pgSettings }[UI.page] || pgOverview;
+  const P = { map: pgMap, status: pgStatus, control: pgControl, sides: pgSides, overview: pgOverview, forces: pgForces, board: pgBoard, roster: pgRoster, combat: pgCombat, rules: pgRules, morale: pgMorale, settings: pgSettings }[UI.page] || pgOverview;
   const html = P(), live = UI.page === "map" ? document.querySelector("#page .mapsvg") : null;
   if (!(live && live.isConnected && mpKeepMap(live, html))) $("page").innerHTML = html;
   lockPage();
@@ -588,6 +590,41 @@ function emptyState() {
     <div class="row-btns"><button class="btn primary lg" data-a="addUnits">${ico("plus")} Add units</button><button class="btn lg" data-a="sample">Load sample forces (demo)</button></div></div>`;
 }
 
+/* ---------- MORALE: the chairs set it, delegates only see their own side's ----------
+   The figure lives on the server (api/morale.js); every device copies it into its own sides[].morale so the charts and the combat calculator keep using it. */
+const MORALE_NA = {};   /* topic -> true while a delegate is on no side, so there is no morale to show */
+let moraleBusy = 0;
+const showMorale = () => D().rules.useMorale && !(DEL && MORALE_NA[S.topic]);
+function setMorale(s, raw) {
+  if (ROLE !== "chair") { deny(); render(); return; }
+  const d = D(), v = clamp(r2(num(raw, 50)), 0, 100), o = d.sides[s].morale; if (v === o) { render(); return; }
+  d.sides[s].morale = v; addLog(d, `Morale (${sideLbl(s)}): ${fx(o)}% → ${fx(v)}%`, "rules"); save(); render();
+  moraleBusy++;
+  SentinelAuth.api("POST", "/api/morale", { topic: S.topic, side: s, value: v }).then(r => { if (!r.ok) throw 0; }).catch(() => { toast("Could not save the morale, try again"); }).then(() => { moraleBusy--; loadMorale(); });
+}
+function loadMorale() {
+  if (ROLE === "admin") return Promise.resolve();
+  return SentinelAuth.api("GET", "/api/morale").then(r => r.ok ? r.json() : null).then(j => {
+    if (!j || moraleBusy) return; let ch = false;
+    ["t1", "t2"].forEach(t => {
+      const d = S.topics[t]; if (!d) return;
+      if (DEL) { const v = j.mine && j.mine[t], na = v == null; if (!!MORALE_NA[t] !== na) { MORALE_NA[t] = na; ch = true; } if (!na && d.sides.me.morale !== v) { d.sides.me.morale = v; ch = true; } }
+      else ["me", "foe"].forEach(s => { const v = j[t] && j[t][s]; if (Number.isFinite(v) && d.sides[s].morale !== v) { d.sides[s].morale = v; ch = true; } });
+    });
+    if (ch) { save(); if (!dragging() && !document.querySelector("#page :focus")) render(); }
+  }, () => {});
+}
+function pgMorale() {
+  const d = D(), card = s => { const m = d.sides[s].morale, T = tot(s); return `<div class="panel">
+    <div class="panel-h"><div><h3><span class="sd ${s}"></span>${esc(sideLbl(s))}</h3><p>${plural(T.n, "unit")} in the field · delegates on this side see this figure</p></div></div>
+    <div class="stat-big">${fx(m)}<small>%</small></div><div class="stat-lbl">Morale of ${esc(sideLbl(s))}</div>
+    <div class="fld" style="margin-top:18px"><label for="mo-${s}">Set morale</label><div class="rng"><input type="range" min="0" max="100" step="1" value="${m}" id="mo-${s}r" data-i="pair" data-pair="mo-${s}" data-c="morale" data-s="${s}" aria-label="Morale of ${esc(sideLbl(s))}"><input type="number" min="0" max="100" step="1" value="${fx(m)}" id="mo-${s}" data-i="pair" data-pair="mo-${s}r" data-c="morale" data-s="${s}"></div></div>
+    <div class="row-btns">${[-10, -5, 5, 10].map(n => `<button class="btn sm" data-a="moraleStep" data-s="${s}" data-d="${n}">${n > 0 ? "+" : "−"}${Math.abs(n)}</button>`).join("")}</div></div>`; };
+  return head("Morale", "Set the morale of each side. Delegates can only see their own side's figure, and the combat calculator uses it for the attacker.") +
+    (d.rules.useMorale ? "" : '<div class="note">Morale is switched off in Rules &amp; formulas, so it is not part of the damage for now.</div>') +
+    `<section class="set-grid">${card("me")}${card("foe")}</section>`;
+}
+
 /* ---------- OVERVIEW: charts and graphs of the forces ---------- */
 function pgOverview() {
   const d = D();
@@ -615,12 +652,12 @@ function pgOverview() {
   return head("Forces overview", "", (DEL ? "" : seg("ovSide", [["me", `${sideLbl("me")} · ${plural(tot("me").n, "unit")}`], ["foe", `${sideLbl("foe")} · ${plural(tot("foe").n, "unit")}`]], s, "s")) + foldAll(OVK)) + `
   <section class="ov-top">
     <div class="panel${foldCls("ov-trend")}">
-      ${ph("ov-trend", "Force strength over time", "Every move, HP change and battle adds a point", seg("ovMetric", [["hp", "Hit points"], ["n", "Units"], ["atk", "Attack"]], M, "m"), `${strP}% combat strength · ${T.n} units in the field · ${T.lost} lost${d.rules.useMorale ? ` · morale ${fx(d.sides[s].morale)}%` : ""}`)}
+      ${ph("ov-trend", "Force strength over time", "Every move, HP change and battle adds a point", seg("ovMetric", [["hp", "Hit points"], ["n", "Units"], ["atk", "Attack"]], M, "m"), `${strP}% combat strength · ${T.n} units in the field · ${T.lost} lost${showMorale() ? ` · morale ${fx(d.sides[s].morale)}%` : ""}`)}
       <div class="fold-body ov-trend">
         <div class="ov-l">
           <div class="stat-big">${strP}<small>%</small></div><div class="stat-lbl">Combat strength of ${esc(sideLbl(s))} · ${fx(T.hp)} of ${fx(T.max)} HP</div>
           <div class="stat-big">${T.n}</div><div class="stat-lbl">Units in the field · ${T.lost} lost</div>
-          ${d.rules.useMorale ? `<div class="stat-big sm">${fx(d.sides[s].morale)}<small>%</small></div><div class="stat-lbl">Morale</div>` : ""}
+          ${showMorale() ? `<div class="stat-big sm">${fx(d.sides[s].morale)}<small>%</small></div><div class="stat-lbl">Morale</div>` : ""}
           ${ROLE === "chair" ? "" : `<button class="btn primary" data-a="go" data-p="roster">${ico("shield")} Battle overview</button>`}
         </div>
         <div class="ov-r">
@@ -892,7 +929,7 @@ function pgCombat() {
   const d = D(), R = d.rules, s = selNow(), r = currentResult(), am = moraleNow("att"), dm = moraleNow("def");
   const rng = (id, w, label, v, sub) => `<div class="fld"><label for="${id}">${label}</label><div class="rng"><input type="range" min="0" max="100" step="1" value="${v}" id="${id}r" data-i="pair" data-pair="${id}" data-c="cm" data-w="${w}" aria-label="${label}"><input type="number" id="${id}" min="0" max="100" step="1" value="${fx(v)}" data-i="pair" data-pair="${id}r" data-c="cm" data-w="${w}"></div><small>${sub}</small></div>`;
   const mid = `<div class="panel cb-mid"><div class="panel-h"><div><h3>Conditions</h3><p>Applied to this engagement only</p></div></div>
-    ${R.useMorale ? rng("am", "att", "Attacker morale %", am, UI.cm.att != null ? `<button class="lnk" data-a="cmReset" data-w="att">Use ${esc(sideLbl(s.aS))} morale (${fx(d.sides[s.aS].morale)}%)</button>` : `From ${esc(sideLbl(s.aS))}${s.aS === "foe" ? " (your estimate)" : ""}`) : `<div class="note">Morale is switched off, so it is not part of the damage.</div>`}
+    ${R.useMorale ? rng("am", "att", "Attacker morale %", am, UI.cm.att != null ? `<button class="lnk" data-a="cmReset" data-w="att">Use ${esc(sideLbl(s.aS))} morale (${fx(d.sides[s.aS].morale)}%)</button>` : `From ${esc(sideLbl(s.aS))}`) : `<div class="note">Morale is switched off, so it is not part of the damage.</div>`}
     ${R.useCounter && R.useMorale ? rng("dm", "def", "Defender morale % (counter-attack)", dm, UI.cm.def != null ? `<button class="lnk" data-a="cmReset" data-w="def">Use ${esc(sideLbl(s.dS))} morale (${fx(d.sides[s.dS].morale)}%)</button>` : `From ${esc(sideLbl(s.dS))}`) : ""}
     ${R.useMult ? `<div class="fld"><label for="mult">Situational multiplier</label><div class="mult"><input id="mult" type="number" step="0.05" min="0" value="${UI.mult}" data-c="mult">${[0.5, 0.75, 1, 1.25, 1.5, 2].map(v => `<button class="chip ${num(UI.mult) === v ? "on" : ""}" data-a="multSet" data-v="${v}">×${v}</button>`).join("")}</div><small>Terrain, fortification, surprise: whatever the chairs rule.</small></div>` : ""}
     ${R.useBonus ? `<div class="fld"><label for="bonus">Flat bonus damage</label><input id="bonus" type="number" step="0.5" value="${UI.bonus}" data-c="bonus"></div>` : ""}
@@ -995,14 +1032,12 @@ function trialText() {
 function pgSettings() {
   const d = D(), T = TOPICS[S.topic];
   const sideF = s => `<div class="fld"><label for="sn-${s}">${s === "me" ? "Your side" : "The enemy"}</label><input id="sn-${s}" value="${esc(d.sides[s].name)}" data-c="sideName" data-s="${s}" maxlength="40"><div class="sug">${T.suggest.map(n => `<button data-a="sidePick" data-s="${s}" data-v="${esc(n)}">${esc(n)}</button>`).join("")}</div></div>`;
-  const mor = s => `<div class="fld"><label for="mo-${s}">${esc(sideLbl(s))}${s === "foe" ? " (your estimate)" : ""}</label><div class="rng"><input type="range" min="0" max="100" step="1" value="${d.sides[s].morale}" id="mo-${s}r" data-i="pair" data-pair="mo-${s}" data-c="morale" data-s="${s}" aria-label="Morale of ${esc(sideLbl(s))}"><input type="number" min="0" max="100" step="1" value="${fx(d.sides[s].morale)}" id="mo-${s}" data-i="pair" data-pair="mo-${s}r" data-c="morale" data-s="${s}"></div></div>`;
   const fronts = d.fronts.map((f, i) => { const n = d.units.filter(u => u.front === f.id).length; return `<div class="fr-row">${f.fixed ? `<span class="fixed">${esc(f.name)} <small>(fixed)</small></span>` : `<input class="in" value="${esc(f.name)}" data-c="frontName" data-f="${f.id}" id="fr-${f.id}" maxlength="40" aria-label="Front name">`}<small>${plural(n, "unit")}</small><span class="btns">${f.fixed ? "" : `<button class="icon-btn sm" data-a="frontMove" data-f="${f.id}" data-d="-1" ${i <= 1 ? "disabled" : ""} aria-label="Move up">${ico("up")}</button><button class="icon-btn sm" data-a="frontMove" data-f="${f.id}" data-d="1" ${i >= d.fronts.length - 2 ? "disabled" : ""} aria-label="Move down">${ico("down")}</button><button class="icon-btn sm" data-a="frontDel" data-f="${f.id}" aria-label="Delete front">${ico("trash")}</button>`}</span></div>`; }).join("");
   return head("Allocation &amp; data", "") + `
   <section class="set-grid">
     <div class="panel"><div class="panel-h"><div><h3>Allocation</h3><p>Fill this in when the chairs send allocations. The side names are used everywhere in the tracker.</p></div></div>
       <div class="fgrid"><div class="fld span2"><label for="al-del">Delegation / country</label><input id="al-del" value="${esc(d.alloc.delegation)}" data-c="alloc" data-k="delegation" maxlength="60" placeholder="Pending"></div><div class="fld span2"><label for="al-por">Portfolio / position</label><input id="al-por" value="${esc(d.alloc.portfolio)}" data-c="alloc" data-k="portfolio" maxlength="60" placeholder="e.g. Minister of War"></div></div>
       ${sideF("me")}${sideF("foe")}</div>
-    <div class="panel"><div class="panel-h"><div><h3>Morale</h3><p>Used by the combat calculator while Morale is switched on (Rules &amp; formulas).${d.rules.useMorale ? "" : " <b>Morale is currently switched off.</b>"}</p></div></div>${mor("me")}${mor("foe")}</div>
     <div class="panel"><div class="panel-h"><div><h3>Fronts</h3><p>The columns of the Order of Battle board. Reserve and Destroyed are fixed.</p></div><button class="btn sm" data-a="frontAdd">${ico("plus")} Add front</button></div>${fronts}</div>
     <div class="panel"><div class="panel-h"><div><h3>Backup &amp; data</h3><p>Everything is saved in this browser on this device after every change. Export a backup before the committee and to move to another device.</p></div></div>
       <div class="data-btns"><button class="btn primary" data-a="exp">${ico("down")} Export backup</button><button class="btn" data-a="imp" data-need="admin">${ico("up")} Import backup</button><button class="btn" data-a="sample">Load sample forces (demo)</button></div>
@@ -1221,6 +1256,7 @@ const A = {
   },
   mfAll: el => { const on = el.dataset.v === "1", d = D(); d.branches.forEach(b => { if (on) delete UI.fold["mf:" + b.id]; else UI.fold["mf:" + b.id] = true; }); d.types.forEach(t => { if (on) UI.open["mf:" + t.id] = true; else delete UI.open["mf:" + t.id]; }); saveUI(); render(); },
   sample: el => D().units.length ? arm(el, loadSample) : loadSample(),
+  moraleStep: el => setMorale(el.dataset.s, D().sides[el.dataset.s].morale + num(el.dataset.d)),
   ovSide: el => { UI.ovSide = el.dataset.s; saveUI(); render(); },
   ovMetric: el => { UI.ovMetric = el.dataset.m; saveUI(); render(); },
   boardSide: el => { UI.boardSide = el.dataset.s; UI.bs = 1; saveUI(); render(); },
@@ -1341,7 +1377,7 @@ const C = {
   branch: el => { const b = D().branches.find(x => x.id === el.dataset.id); if (!b) return; const k = el.dataset.k, v = k === "color" ? el.value : (el.value.trim().slice(0, 30) || b.name); if (b[k] === v) return; act(k === "name" ? `Class renamed: ${b.name} → ${v}` : `Class colour changed: ${b.name}`, d => { d.branches.find(x => x.id === b.id)[k] = v; }, "rules"); },
   alloc: el => { const k = el.dataset.k, v = el.value.trim().slice(0, 60); if (D().alloc[k] === v) return; act(`Allocation: ${k === "delegation" ? "delegation" : "portfolio"} set to “${v || "pending"}”`, d => { d.alloc[k] = v; }, "edit"); },
   sideName: el => { const s = el.dataset.s, v = String(el.value).trim().slice(0, 40) || (s === "me" ? "My Force" : "Enemy Force"), o = D().sides[s].name; if (v === o) return; act(`Side renamed: ${o} → ${v}`, d => { d.sides[s].name = v; }, "edit"); },
-  morale: el => { const s = el.dataset.s, v = clamp(r2(num(el.value, 50)), 0, 100), o = D().sides[s].morale; if (v === o) return; act(`Morale (${sideLbl(s)}): ${fx(o)}% → ${fx(v)}%`, d => { d.sides[s].morale = v; }, "edit"); },
+  morale: el => setMorale(el.dataset.s, el.value),
   frontName: el => { const f = frontById(el.dataset.f), v = el.value.trim().slice(0, 40); if (!f || !v || v === f.name) { render(); return; } act(`Front renamed: ${f.name} → ${v}`, d => { d.fronts.find(x => x.id === f.id).name = v; }, "edit"); },
   adType: () => { const t = D().types.find(x => x.id === $("adType").value); if (t) { $("adAtk").value = fx(t.atk); $("adHp").value = fx(t.hp); $("adMov").value = fx(t.mov); $("adRng").value = fx(t.rng); } if ($("adName").dataset.t !== "1") $("adName").value = t ? t.name : "Unit"; addHint(); }
 };
@@ -1389,6 +1425,7 @@ applyTheme();
 reseed();
 render();
 if (ROLE === "delegate") loadAlloc();
+loadMorale(); setInterval(() => { if (!document.hidden) loadMorale(); }, 15000);
 const beat = () => { if (!document.hidden) SentinelAuth.api("POST", "/api/status", { topic: S.topic, page: UI.page }).catch(() => {}); };
 beat(); setInterval(beat, 45000);
 setInterval(() => { if (UI.page === "status" && ROLE === "admin" && !document.hidden) loadStatus(); }, 5000);
