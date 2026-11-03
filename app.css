@@ -740,6 +740,8 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .page:has(.mp-wrap) { max-width: none; padding: 18px 20px 32px; } .page:has(.mp-wrap) .pg-p { display: none; } .page:has(.mp-wrap) .pg-head { margin-bottom: 12px; }
 .mp-wrap { display: flex; flex-direction: column; gap: 12px; } .mp-board { align-self: stretch; }
 .mp-stage { position: relative; }
+/* the whole map fits one screen: never taller than the window, so the legend is always in view */
+.mp-board { width: 100%; max-width: max(640px, calc((100vh - 345px) * 16 / 9)); margin: 0 auto; }
 .mp-ov { position: absolute; top: 10px; bottom: 10px; width: 240px; display: flex; flex-direction: column; gap: 8px; z-index: 3; pointer-events: none; } .mp-ov > * { pointer-events: auto; }
 .mp-L { left: 10px; } .mp-R { right: 10px; align-items: flex-end; } .mp-R .mp-tab { align-self: flex-end; }
 .mp-tab { align-self: flex-start; padding: 8px 14px; border: 1px solid var(--line); border-radius: 99px; background: var(--panel); color: var(--ink); font: 600 var(--fs-sm) inherit; font-family: inherit; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); }
