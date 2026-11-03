@@ -350,4 +350,4 @@ function mpTroopPlaceAt(lat, lon) {
   document.addEventListener("keydown", e => { if (e.key === "Escape" && mpPlace) { mpPlace = null; if (typeof UI !== "undefined" && UI.page === "map") render(); } });
 })();
 /* the troops list and this device's forces stay in step while you are on any page */
-setInterval(() => { if (typeof ROLE !== "undefined" && ROLE !== "admin" && mpTLoaded && !document.hidden && !mpTDrag) mpTroopsLoad(); }, 20000);
+setInterval(() => { if (typeof ROLE !== "undefined" && ROLE !== "admin" && mpTLoaded && !document.hidden && !mpTDrag) mpTroopsLoad(); }, 10000);
