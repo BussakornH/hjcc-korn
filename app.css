@@ -738,16 +738,20 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 
 /* Battle map: the page gives the map all the width it can */
 .page:has(.mp-wrap) { max-width: none; padding: 18px 20px 32px; } .page:has(.mp-wrap) .pg-p { display: none; } .page:has(.mp-wrap) .pg-head { margin-bottom: 12px; }
-.mp-wrap { display: grid; grid-template-columns: minmax(210px, 250px) minmax(0, 1fr) minmax(210px, 250px); grid-template-areas: "bar bar bar" "L map R" "foot foot foot"; gap: 14px; align-items: stretch; }
-.mp-wrap > .mp-bar { grid-area: bar; } .mp-L { grid-area: L; } .mp-board { grid-area: map; } .mp-R { grid-area: R; } .mp-foot { grid-area: foot; }
-.mp-tl { position: relative; min-width: 0; } .mp-tl-in { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 2px; }
+.mp-wrap { display: flex; flex-direction: column; gap: 12px; } .mp-board { align-self: stretch; }
+.mp-stage { position: relative; }
+.mp-ov { position: absolute; top: 10px; bottom: 10px; width: 240px; display: flex; flex-direction: column; gap: 8px; z-index: 3; pointer-events: none; } .mp-ov > * { pointer-events: auto; }
+.mp-L { left: 10px; } .mp-R { right: 10px; align-items: flex-end; } .mp-R .mp-tab { align-self: flex-end; }
+.mp-tab { align-self: flex-start; padding: 8px 14px; border: 1px solid var(--line); border-radius: 99px; background: var(--panel); color: var(--ink); font: 600 var(--fs-sm) inherit; font-family: inherit; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); }
+.mp-tl-in { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; } .mp-tl-in .panel { background: color-mix(in srgb, var(--panel) 90%, transparent); box-shadow: 0 6px 18px rgba(0, 0, 0, .35); }
+.mp-ov.shut { bottom: auto; width: auto; } .mp-ov.shut .mp-tl-in { display: none; }
 .mp-bar { padding: 8px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 28px; } .mp-bar > * { flex: 1 1 420px; min-width: 0; } .mp-bar h3 { margin: 0; font-size: var(--fs-md); white-space: nowrap; }
 .mp-bar-r { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; } .mp-bar-b { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; flex: 1; min-width: 0; font-size: var(--fs-sm); }
 .mp-bar-h { display: flex; align-items: baseline; gap: 12px; } .mp-bar .mp-act { display: inline-flex; margin: 0; flex-wrap: wrap; } .mp-bar .kv { display: inline-flex; gap: 6px; align-items: baseline; }
 .mp-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; } .mp-bar .mp-u { width: auto; margin: 0; padding: 5px 10px; display: inline-flex; gap: 8px; align-items: baseline; border-radius: 8px; }
 .mp-view { position: relative; aspect-ratio: 16 / 9; }
 .mp-view .mapsvg { position: absolute; inset: 0; width: 100%; height: 100%; max-height: none; }
-.mp-board { position: relative; align-self: start; border: 1px solid var(--line); border-radius: var(--r); background: #06142c; overflow: hidden; }
+.mp-board { position: relative; border: 1px solid var(--line); border-radius: var(--r); background: #06142c; overflow: hidden; }
 .mapsvg { display: block; width: 100%; height: auto; cursor: grab; touch-action: none; user-select: none; }
 .mapsvg:active { cursor: grabbing; }
 .mapsvg .sea { fill: #06142c; }
@@ -773,7 +777,7 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .ln.draft .ln-l { stroke-dasharray: 8 6; }
 .vh { r: calc(var(--k) * 8px); fill: #fff; stroke: #06142c; stroke-width: 2.5px; cursor: move; } .vh.on { fill: #5aa9ff; stroke: #fff; }
 .vm { r: calc(var(--k) * 5px); fill: rgba(255, 255, 255, .45); stroke: #06142c; stroke-width: 1.5px; cursor: copy; }
-.mp-zoom { position: absolute; z-index: 2; top: 10px; right: 10px; display: flex; gap: 6px; }
+.mp-zoom { position: absolute; z-index: 2; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
 .mp-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; } .mp-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .mp-card { padding: 16px; }
 .mp-u { position: relative; display: block; width: 100%; margin-bottom: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
@@ -784,8 +788,7 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .mp-key { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 8px 12px; border-top: 1px solid rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .7); font-size: var(--fs-xs); }
 .mp-key span { display: inline-flex; align-items: center; gap: 6px; }
 .k-line { width: 22px; height: 0; border-top: 3px solid #fff; } .k-dot { width: 10px; height: 10px; border-radius: 50%; background: #fff; } .k-dot.L { background: #5aa9ff; } .k-dot.R { background: #ff7a7a; }
-@media (max-width: 800px) { .mp-side { grid-template-columns: minmax(0, 1fr); } } @media (max-width: 1000px) { .mp-wrap { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "bar bar" "map map" "L R" "foot foot"; } .mp-tl-in { position: static; max-height: 70vh; } }
-@media (max-width: 640px) { .mp-wrap { grid-template-columns: minmax(0, 1fr); grid-template-areas: "bar" "map" "L" "R" "foot"; } }
+@media (max-width: 800px) { .mp-side { grid-template-columns: minmax(0, 1fr); } } @media (max-width: 900px) { .mp-ov { position: static; width: auto; margin-top: 10px; padding: 0 10px; } .mp-tl-in { max-height: 60vh; } .mp-ov.shut { padding-bottom: 0; } .mp-tab, .mp-R .mp-tab { align-self: stretch; } .mp-stage { display: block; } .mp-zoom { left: auto; right: 10px; transform: none; } }
 
 /* city sides, rounded text outlines (sized in screen px so zooming never swells them), solid country colours */
 .mapsvg .bd { fill: #0a2445; stroke: rgba(255, 255, 255, .4); stroke-width: .9px; stroke-linejoin: round; }
@@ -850,4 +853,4 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 
 /* map page polish: readable zoom buttons on the picture, side tabs that never wrap */
 .mp-zoom .btn:not(.on) { background: rgba(6, 20, 44, .82); color: #fff; border-color: rgba(255, 255, 255, .3); }
-.mp-tl .seg { display: flex; } .mp-tl .seg button { flex: 1 1 auto; padding-left: 8px; padding-right: 8px; white-space: nowrap; }
+.mp-ov .seg { display: flex; } .mp-ov .seg button { flex: 1 1 auto; padding-left: 8px; padding-right: 8px; white-space: nowrap; }

@@ -271,7 +271,7 @@ const MPCODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "CAV", "ARC", "SIE", "G
 Object.assign(MAPA, {
   mapTroop: el => { if (mpPlace) return; mpTS = el.dataset.id === mpTS ? null : el.dataset.id; mpRG = null;
     const x = mpTS && mpTrFind(mpTS);
-    if (x && MPV && el.closest(".mp-tl")) { const p = mpXY(mpGeo(S.topic), x.lat, x.lon), m = 0; if (p[0] < MPV.x + m || p[0] > MPV.x + MPV.w - m || p[1] < MPV.y + m || p[1] > MPV.y + MPV.h - m) { MPV.x = p[0] - MPV.w / 2; MPV.y = p[1] - MPV.h / 2; mpClampView(); } }   /* a troop out of sight comes into view */
+    if (x && MPV && el.closest(".mp-ov")) { const p = mpXY(mpGeo(S.topic), x.lat, x.lon), m = 0; if (p[0] < MPV.x + m || p[0] > MPV.x + MPV.w - m || p[1] < MPV.y + m || p[1] > MPV.y + MPV.h - m) { MPV.x = p[0] - MPV.w / 2; MPV.y = p[1] - MPV.h / 2; mpClampView(); } }   /* a troop out of sight comes into view */
     render(); },
   mapTrSideL: el => { mpColL = el.dataset.s; render(); },
   mapTrSideR: el => { mpColR = el.dataset.s; render(); },
