@@ -853,3 +853,11 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 
 /* map page polish: readable zoom buttons on the picture, side tabs that never wrap */
 .mp-zoom .btn:not(.on) { background: rgba(6, 20, 44, .82); color: #fff; border-color: rgba(255, 255, 255, .3); }
+
+/* troop groups: a kind of unit (Infantry, Light Infantry...) folds away over its units */
+.mp-grp + .mp-grp { margin-top: 4px; }
+.mp-gh { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2, var(--panel)); color: var(--ink); font: inherit; cursor: pointer; text-align: left; }
+.mp-gh:hover { border-color: var(--ink-3); } .mp-gh b { flex: 1; min-width: 0; font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .mp-gh small { color: var(--ink-3); font-size: var(--fs-xs); }
+.mp-gh .ic { width: 14px; height: 14px; flex: none; transition: transform .12s ease; } .mp-grp.open > .mp-gh .ic { transform: rotate(90deg); }
+.mp-gb { display: none; padding-top: 4px; } .mp-grp.open > .mp-gb { display: block; } .mp-gb .trt + .trt { margin-top: 4px; } .trt-g .mp-gb { padding-left: 2px; }
+@media (prefers-reduced-motion: reduce) { .mp-gh .ic { transition: none; } }
