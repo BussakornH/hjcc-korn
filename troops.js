@@ -2,7 +2,7 @@
 /* SENTINEL troops on the battle map: the chairs place a unit from their forces anywhere on the map, drag it, and everyone sees it with its symbol and its HP.
    Click a troop and a reach line shows how far it can move this turn, shortened by mountains, forest, marsh, rivers and the sea.
    Loaded after map.js (it adds to MAPA) and before app.js. Stored on the server by api/troops.js. */
-let TR = { t1: [], t2: [] }, mpTPend = 0, mpTGen = 0, mpTS = null, mpPlace = null, mpTDrag = null, mpRG = null, mpTSaveT = 0;
+let TR = { t1: [], t2: [] }, mpTPend = 0, mpTGen = 0, mpTS = null, mpPlace = null, mpTDrag = null, mpRG = null, mpTSaveT = 0, mpPing = null, mpPingT = 0;
 const MPAFF = [["blue", "Blue"], ["red", "Red"], ["neutral-green", "Green"], ["neutral-violet", "Violet"], ["neutral-slate", "Slate"]];
 const MPAFFC = { blue: "#0a7cff", red: "#ff453a", "neutral-green": "#2fb85a", "neutral-violet": "#a259f0", "neutral-slate": "#8a91a0" };
 const MPSEA = ["GAL", "COG", "DES", "CRU", "DRD", "SUB"], MPAIR = ["FTR", "REC", "BMB"];
@@ -169,7 +169,7 @@ function mpTroopsSvg(t) {
   return (TR[t] || []).map(x => {
     const p = mpXY(g, x.lat, x.lon); if (p[0] < -20 || p[0] > g.W + 20 || p[1] < -20 || p[1] > g.H + 20) return "";
     const pc = x.maxhp > 0 ? Math.max(0, Math.min(1, x.hp / x.maxhp)) : 0, on = x.id === mpTS;
-    return `<g class="trp${on ? " on" : ""}${x.lost ? " dead" : ""}" data-a="mapTroop" data-id="${esc(x.id)}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><g class="trp-i">${on ? '<circle class="trp-r" r="34"/>' : ""}<circle class="trp-hit" r="30"/><image href="symbols/${x.aff}/${x.code}.png" x="-30" y="-30" width="60" height="60"/><rect class="trp-hb" x="-19" y="20" width="38" height="4.5" rx="2.2"/><rect x="-19" y="20" width="${(38 * pc).toFixed(1)}" height="4.5" rx="2.2" style="fill:${mpHpCol(pc * 100)}"/><text class="trp-n" y="38">${esc(x.name)}</text></g></g>`;
+    return `<g class="trp${on ? " on" : ""}${x.lost ? " dead" : ""}" data-a="mapTroop" data-id="${esc(x.id)}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><g class="trp-i">${on ? '<circle class="trp-r" r="34"/>' : ""}${x.id === mpPing ? '<circle class="trp-ping" r="34"/><circle class="trp-ping b" r="34"/>' : ""}<circle class="trp-hit" r="30"/><image href="symbols/${x.aff}/${x.code}.png" x="-30" y="-30" width="60" height="60"/><rect class="trp-hb" x="-19" y="20" width="38" height="4.5" rx="2.2"/><rect x="-19" y="20" width="${(38 * pc).toFixed(1)}" height="4.5" rx="2.2" style="fill:${mpHpCol(pc * 100)}"/><text class="trp-n" y="38">${esc(x.name)}</text></g></g>`;
   }).join("");
 }
 const mpTroopsRedraw = () => { const e = document.getElementById("mp-troops"); if (e) e.innerHTML = mpTroopsSvg(S.topic); };
@@ -250,14 +250,16 @@ function mpRangeFor(t, x) {
 const mpRangeSvg = t => { const x = mpTrFind(mpTS); if (!x) return ""; const r = mpRangeFor(t, x); return r ? `<path class="rg-f" d="${r.full}" fill-rule="evenodd"/><path class="rg-h" d="${r.half}" fill-rule="evenodd"/>` : ""; };
 
 /* ---------- the side panel ---------- */
+const mpLatLon = x => Math.abs(x.lat).toFixed(2) + "°" + (x.lat < 0 ? "S" : "N") + " " + Math.abs(x.lon).toFixed(2) + "°" + (x.lon < 0 ? "W" : "E");
 function mpTroopCard() {
   const x = mpTrFind(mpTS); if (!x) return ""; const chair = ROLE !== "delegate", pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0, km = Math.round(x.mov * ((window.SENTINEL_TERRAIN || {}).kmPerMov || 30)), local = chair && x.uid && D().units.some(u => u.id === x.uid);
   const dom = mpDomain(x.code);
   return `<section class="panel mp-card"><div class="trc"><img src="symbols/${x.aff}/${x.code}.png" alt=""><div><b>${esc(x.name)}</b><span>${esc(x.code)}${x.lost ? " · destroyed" : ""}</span></div></div>
     <div class="trc-hp"><div class="trc-bar"><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></div><span>HP <b>${fx(x.hp)}</b> / ${fx(x.maxhp)} · ${pc}%</span></div>
-    <div class="trc-st"><span>ATK <b>${fx(x.atk)}</b></span><span>MOV <b>${fx(x.mov)}</b></span><span>RNG <b>${fx(x.rng)}</b></span></div>
+    <div class="trc-st"><span>ATK <b>${fx(x.atk)}</b></span><span>MOV <b>${fx(x.mov)}</b></span><span>RNG <b>${fx(x.rng)}</b></span><span class="trc-pos">AT <b>${mpLatLon(x)}</b></span></div>
+    <div class="mp-act trc-go"><button class="btn sm" data-a="mapTrPin" title="Move the map to this unit and mark where it stands">${ico("pin")} Pinpoint location</button>${local && ROLE !== "admin" ? `<button class="btn sm primary" data-a="mapTrCalc" title="Put this unit into the combat calculator and open it">${ico("swords")} Open in calculator</button>` : ""}</div>
     <p class="muted" style="margin:8px 0 0">${x.mov > 0 ? `Reach this turn: up to ${km} km on open ground${dom === "air" ? "" : dom === "sea" ? ", on water only" : ". Mountains, forest, marsh and river crossings shorten it"}. The solid line is the full move, the dashed line half of it.` : "This unit does not move."}</p>
-    ${chair ? `<div class="mp-act" style="flex-wrap:wrap;margin-top:12px">${local ? `<button class="btn sm" data-a="mapTrHp" data-d="-1">−1 HP</button><button class="btn sm" data-a="mapTrHp" data-d="1">+1 HP</button><button class="btn sm" data-a="mapTrTray">${ico("swords")} Battle tray</button>` : ""}<button class="btn sm danger" data-a="mapTrDel">Take off the map</button></div>
+    ${chair ? `<div class="mp-act" style="flex-wrap:wrap;margin-top:12px">${local ? `<button class="btn sm" data-a="mapTrHp" data-d="-1">−1 HP</button><button class="btn sm" data-a="mapTrHp" data-d="1">+1 HP</button><button class="btn sm" data-a="mapTrTray" title="Keep it for the next engagement without leaving the map">${ico("plus")} Add to battle tray</button>` : ""}<button class="btn sm danger" data-a="mapTrDel">Take off the map</button></div>
 ${local ? "" : '<p class="muted" style="margin-top:8px">This troop is not in your forces on this device, so its HP cannot be changed here.</p>'}` : ""}</section>`;
 }
 let mpLDrag = null;
@@ -290,7 +292,8 @@ function mpTroopCol(t, col) {
 const MPCODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "XBW", "HOB", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF"];
 
 Object.assign(MAPA, {
-  mapTroop: el => { if (mpPlace) return; mpTS = el.dataset.id === mpTS ? null : el.dataset.id; mpRG = null;
+  mapTroop: el => { mpPlace = null;   /* a unit picked from the list for placing used to swallow every click on a marker; clicking a marker now just stops the placing */
+    mpTS = el.dataset.id === mpTS ? null : el.dataset.id; mpRG = null;
     const x = mpTS && mpTrFind(mpTS);
     if (x && MPV && el.closest(".mp-tl")) { const p = mpXY(mpGeo(S.topic), x.lat, x.lon), m = 0; if (p[0] < MPV.x + m || p[0] > MPV.x + MPV.w - m || p[1] < MPV.y + m || p[1] > MPV.y + MPV.h - m) { MPV.x = p[0] - MPV.w / 2; MPV.y = p[1] - MPV.h / 2; mpClampView(); } }   /* a troop out of sight comes into view */
     render(); },
@@ -304,8 +307,29 @@ Object.assign(MAPA, {
     const old = num(u.hp), nv = clamp(r2(old + num(el.dataset.d)), 0, num(u.maxhp)); if (nv === old) { toast(num(el.dataset.d) > 0 ? "Already at full HP" : "Already at 0 HP"); return; }
     setHp(d, u, nv); addLog(d, `${u.name}: HP ${fx(old)} → ${fx(nv)}${lost(u) ? " (destroyed)" : ""}`, "hp"); snap(d); save(); render();
   },
-  mapTrTray: () => { const x = mpTrFind(mpTS); if (x && x.uid) A.tray({ dataset: { id: x.uid } }); }
+  mapTrTray: () => { const x = mpTrFind(mpTS); if (x && x.uid) A.tray({ dataset: { id: x.uid } }); },
+  mapTrPin: () => { const x = mpTrFind(mpTS); if (x) mpPinpoint(x); },
+  mapTrCalc: () => { const x = mpTrFind(mpTS), u = x && x.uid && D().units.find(y => y.id === x.uid); if (u) toCalc(u.id); }   /* one click: the unit goes in the calculator and the page switches */
 });
+/* Pinpoint: the camera glides to the unit (zooming in if the view is wide) and a ring pulses on it three times. The animation is skipped when the person asked for less motion. */
+const mpReduced = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+function mpFlyTo(cx, cy, w) {
+  const svg = document.querySelector(".mapsvg"); if (!svg || !MPV) return;
+  const keep = MPV; MPV = { x: cx - w / 2, y: cy - w * 9 / 32, w, h: w * 9 / 16 }; mpClampView(); const to = MPV; MPV = keep;   /* where the view may actually end up (the map edge stops it) */
+  const from = { x: MPV.x, y: MPV.y, w: MPV.w }, id = ++mpFly, t0 = performance.now(), ms = mpReduced() ? 0 : 420;
+  const step = now => {
+    if (id !== mpFly || !svg.isConnected) return;   /* a drag or the wheel took over */
+    const u = ms ? Math.min(1, (now - t0) / ms) : 1, k = 1 - Math.pow(1 - u, 3);
+    MPV.x = from.x + (to.x - from.x) * k; MPV.y = from.y + (to.y - from.y) * k; MPV.w = from.w + (to.w - from.w) * k; MPV.h = MPV.w * 9 / 16; mpSetView(svg);
+    if (u < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+function mpPinpoint(x) {
+  const g = mpGeo(S.topic), p = mpXY(g, x.lat, x.lon), fit = mpFit(g);
+  mpFlyTo(p[0], p[1], Math.min(MPV.w, fit.w / 3));
+  mpPing = x.id; clearTimeout(mpPingT); mpPingT = setTimeout(() => { mpPing = null; }, 2800); mpTroopsRedraw();
+}
 /* put a new troop down where the map was clicked: a unit joins the chair's forces (so the combat calculator can use it) and a marker goes on the map */
 function mpTroopPlaceAt(lat, lon) {
   const d = D(), u = mpPlace && d.units.find(y => y.id === mpPlace); if (!u || mpTroops().some(x => x.uid === u.id)) return false;
@@ -337,16 +361,18 @@ function mpTroopPlaceAt(lat, lon) {
   const toSvg = (svg, e) => { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); };
   document.addEventListener("pointerdown", e => {
     const h = e.target.closest && e.target.closest(".trp"), s = e.target.closest && e.target.closest(".mapsvg"); if (!h || !s || e.button || ROLE === "delegate" || false) return;
-    mpTDrag = { id: h.dataset.id, x: e.clientX, y: e.clientY, moved: false, s }; e.stopPropagation(); e.preventDefault();
+    const x = mpTrFind(h.dataset.id), q = toSvg(s, e), p = x ? mpXY(mpGeo(S.topic), x.lat, x.lon) : [q.x, q.y];
+    mpTDrag = { id: h.dataset.id, x: e.clientX, y: e.clientY, moved: false, s, off: [p[0] - q.x, p[1] - q.y] }; mpPressed = Date.now(); mpFly++; e.stopPropagation(); e.preventDefault();   /* off: where on the marker it was grabbed, so it does not jump to the pointer */
   }, true);
   document.addEventListener("pointermove", e => {
-    if (!mpTDrag || !mpTDrag.s.isConnected) return; if (!mpTDrag.moved && Math.hypot(e.clientX - mpTDrag.x, e.clientY - mpTDrag.y) < 4) return; mpTDrag.moved = true; mpDragged = true;
-    const x = mpTrFind(mpTDrag.id); if (!x) return; const q = toSvg(mpTDrag.s, e), m = Math.min(MPV.w, MPV.h) * 0.04; q.x = Math.max(MPV.x + m, Math.min(MPV.x + MPV.w - m, q.x)); q.y = Math.max(MPV.y + m, Math.min(MPV.y + MPV.h - m, q.y)); const ll = mpLL(mpGeo(S.topic), q.x, q.y);   /* it cannot be dragged off the edge of what you can see */
+    if (!mpTDrag) return; if (e.pointerType === "mouse" && e.buttons === 0) { endDrag(); return; }   /* let go somewhere we were not told about */
+    if (!mpTDrag.s.isConnected) return; if (!mpTDrag.moved && Math.hypot(e.clientX - mpTDrag.x, e.clientY - mpTDrag.y) < mpSlop(e)) return; mpTDrag.moved = true; mpDragged = true;
+    const x = mpTrFind(mpTDrag.id); if (!x) return; const q = toSvg(mpTDrag.s, e), m = Math.min(MPV.w, MPV.h) * 0.04; q.x = Math.max(MPV.x + m, Math.min(MPV.x + MPV.w - m, q.x)); q.y = Math.max(MPV.y + m, Math.min(MPV.y + MPV.h - m, q.y)); q.x += mpTDrag.off[0]; q.y += mpTDrag.off[1]; const ll = mpLL(mpGeo(S.topic), q.x, q.y);   /* it cannot be dragged off the edge of what you can see */
      x.lat = ll[0]; x.lon = ll[1];
     const el = [...mpTDrag.s.querySelectorAll(".trp")].find(e => e.dataset.id === x.id); if (el) el.setAttribute("transform", `translate(${q.x.toFixed(1)} ${q.y.toFixed(1)})`); else mpTroopsRedraw();   /* move the one marker, not all of them */
   });
-  const end = () => { const d = mpTDrag; if (!d) return; mpTDrag = null; if (d.moved) { mpRG = null; mpTS = d.id; render(); mpTroopSave(); } };
-  document.addEventListener("pointerup", end); document.addEventListener("pointercancel", end);
+  const endDrag = () => { const d = mpTDrag; mpPressed = 0; if (!d) return; mpTDrag = null; if (d.moved) { mpRG = null; mpTS = d.id; render(); mpTroopSave(); } };
+  document.addEventListener("pointerup", endDrag); document.addEventListener("pointercancel", endDrag); window.addEventListener("blur", endDrag);
   document.addEventListener("keydown", e => { if (e.key === "Escape" && mpPlace) { mpPlace = null; if (typeof UI !== "undefined" && UI.page === "map") render(); } });
 })();
 /* the troops list and this device's forces stay in step while you are on any page */

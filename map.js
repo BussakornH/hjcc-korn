@@ -8,7 +8,7 @@ const MPCFG = {
   t2: { lon: [-11, 48], lat: [30, 63.5], url: "borders-1914.json", rename: { "United Kingdom of Great Britain and Ireland": "United Kingdom" },
     side: { "France": "L", "United Kingdom of Great Britain and Ireland": "L", "Russian Empire": "L", "Kingdom of Italy": "L", "Belgium": "L", "Serbia": "L", "Romania": "L", "Greece": "L", "German Empire": "R", "Austro-Hungarian Empire": "R", "Ottoman Empire": "R", "Bulgaria": "R" } }
 };
-let mpTerrOpen = false, mpDEM = {}, MPREL = {}, mpTD = null, mpTerr = true, mpCity = null, MPLAND = null, MPB = {}, LN = null, MPBASE = {}, MPV = null, MPT = null, mpTool = "edit", mpSel = null, mpVx = null, mpDraft = [], mpLoad = 0, mpDragged = false, mpDrag = null;
+let mpTerrOpen = false, mpDEM = {}, MPREL = {}, mpTD = null, mpTerr = true, mpCity = null, MPLAND = null, MPB = {}, LN = null, MPBASE = {}, MPV = null, MPT = null, mpTool = "edit", mpSel = null, mpVx = null, mpDraft = [], mpLoad = 0, mpDragged = false, mpDrag = null, mpPressed = 0, mpFly = 0;
 
 /* every map is 1000 units wide, so text and points look the same size on both topics; sc is units per degree of latitude */
 const mpGeo = t => { const c = MPCFG[t], k = Math.cos(((c.lat[0] + c.lat[1]) / 2) * Math.PI / 180), sc = 1000 / ((c.lon[1] - c.lon[0]) * k); return { c, k, sc, lon0: c.lon[0], top: c.lat[1], W: 1000, H: (c.lat[1] - c.lat[0]) * sc }; };
@@ -16,6 +16,8 @@ const mpXY = (g, lat, lon) => [(lon - g.lon0) * g.k * g.sc, (g.top - lat) * g.sc
 const mpLL = (g, x, y) => [Math.round((g.top - y / g.sc) * 1000) / 1000, Math.round((g.lon0 + x / (g.k * g.sc)) * 1000) / 1000];
 const mpPath = (g, pts) => "M" + pts.map(p => mpXY(g, p[0], p[1]).map(v => v.toFixed(0)).join(" ")).join("L");
 /* the map window is always 16:9 (a screen): it shows a band of the theatre across its full width, centred; zoom out to see all of it */
+/* how far a press may wander and still count as a click: a hand on a mouse or a finger always moves a little, and a unit that will not select because the press was read as a pan is worse than a pan that starts a few pixels late */
+const mpSlop = e => e && e.pointerType && e.pointerType !== "mouse" ? 14 : 10;
 const mpFit = g => { const h = g.W * 9 / 16; return { x: 0, y: (g.H - h) / 2, w: g.W, h }; };
 
 function mpLoadData(quiet) {
@@ -232,9 +234,10 @@ function pgMap() {
 }
 
 const mpTerrCard = () => `<section class="panel mp-card"><div class="panel-h" style="margin:0"><div><h3>Terrain</h3><p>What the ground does to a force</p></div><button class="btn sm" data-a="mapTerrCard" aria-expanded="${mpTerrOpen}">${mpTerrOpen ? "Hide" : "Show"}</button></div>${mpTerrOpen ? `<div style="margin-top:10px">${((window.SENTINEL_TERRAIN || {}).effects || []).map(e => `<div class="tr-fx"><i class="k-${e.k}"></i><div><b>${esc(e.n)}</b><span>${esc(e.move)}</span><span>${esc(e.fight)}</span></div></div>`).join("")}<p class="muted" style="margin-top:10px">Suggested values: put them in the Situational multiplier of the Combat Calculator. The chairs rule on any crossing.</p></div>` : ""}</section>`;
+const mpChips = (L, act, sel) => L.map(l => `<button class="mp-chip${l.id === sel ? " on" : ""}" data-a="${act}" data-id="${esc(l.id)}"><i class="mp-sw"></i><b>${esc(l.name)}</b><span>${plural(l.pts.length, "point")}</span></button>`).join("");
 function mpViewBar(t) {
   const L = LN[t];
-  return `<section class="panel mp-card mp-bar"><div class="mp-bar-h"><h3>Battle lines</h3><span class="muted">${L.length ? plural(L.length, "line") + " in force" : "None drawn yet"}</span></div><div class="mp-chips">${L.map(l => `<button class="mp-u" data-a="mapFocus" data-id="${esc(l.id)}"><b>${esc(l.name)}</b><span>${plural(l.pts.length, "point")}</span></button>`).join("") || '<span class="muted">The chairs have not drawn a battle line yet.</span>'}</div></section>`;
+  return `<section class="panel mp-card mp-bar"><div class="mp-bar-lines"><span class="mp-bar-k">Battle lines</span><div class="mp-chips">${mpChips(L, "mapFocus") || '<span class="muted">The chairs have not drawn a battle line yet.</span>'}</div></div></section>`;
 }
 function mpChairBar(t) {
   const L = LN[t], sel = L.find(l => l.id === mpSel);
@@ -249,9 +252,8 @@ function mpChairBar(t) {
   } else if (sel) {
     body = `<b>${esc(sel.name)}</b><span class="muted">${plural(sel.pts.length, "point")}. Drag a round point to move it, a small one to bend the line. ${mpVx != null ? "Remove point, or double-click it, deletes the chosen point." : "Click a point to choose it."}</span>
       ${seg("mapZone", mpClosed(mpGeo(t), sel) ? [["", "Off"], ["w", "Blue inside"], ["e", "Red inside"]] : [["", "Off"], ["w", "Blue in the west"], ["e", "Blue in the east"]], sel.zone || "", "z")}<span class="mp-act"><button class="btn sm" data-a="mapRename">Rename</button><button class="btn sm" data-a="mapSimplify">Fewer points</button><button class="btn sm" data-a="mapDelPt" ${mpVx != null && sel.pts.length > 2 ? "" : "disabled"}>Remove point</button><button class="btn sm danger" data-a="mapDelLine">Delete line</button></span>`;
-  } else body = `<span class="muted">Click a line to move or bend it, or draw a new one.</span>`;
-  const list = L.length ? L.map(l => `<button class="mp-u${l.id === mpSel ? " on" : ""}" data-a="mapLine" data-id="${esc(l.id)}"><b>${esc(l.name)}</b><span>${plural(l.pts.length, "point")}</span></button>`).join("") : '<span class="muted">No battle lines yet.</span>';
-  return `<section class="panel mp-card mp-bar"><div class="mp-bar-r">${tools}<div class="mp-bar-b">${body}</div></div><div class="mp-bar-r"><h3>Battle lines</h3><div class="mp-chips">${list}</div><button class="btn sm" data-a="mapReset">Restore defaults</button></div></section>`;
+  } else body = `<span class="muted">${L.length ? "Click a line to move or bend it, or choose Draw a line to add one." : "No battle lines yet. Choose Draw a line to add the first one."}</span>`;
+  return `<section class="panel mp-card mp-bar"><div class="mp-bar-top">${tools}<div class="mp-bar-b">${body}</div></div><div class="mp-bar-lines"><span class="mp-bar-k">Battle lines</span><div class="mp-chips">${mpChips(L, "mapLine", mpSel) || '<span class="muted">None yet</span>'}</div><button class="btn sm plain" data-a="mapReset">Restore defaults</button></div></section>`;
 }
 
 const MAPA = {
@@ -319,6 +321,7 @@ const mpSetView = svg => { svg.setAttribute("viewBox", MPV.x + " " + MPV.y + " "
   const toSvg = (svg, e) => { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); };
   document.addEventListener("pointerdown", e => {
     const s = e.target.closest && e.target.closest(".mapsvg"); if (!s || e.button || !MPV) return;
+    mpPressed = Date.now(); mpFly++;   /* the page is not redrawn under a press (app.js dragging()), or the click would land on a marker that has just been replaced */
     const h = e.target.closest(".vh, .vm");
     if (h && ROLE !== "delegate" && mpTool === "edit" && mpSel) {
       const l = LN[S.topic].find(x => x.id === mpSel); if (!l) return;
@@ -341,6 +344,7 @@ const mpSetView = svg => { svg.setAttribute("viewBox", MPV.x + " " + MPV.y + " "
     pan = { x: e.clientX, y: e.clientY, vx: MPV.x, vy: MPV.y, s, moved: false };
   });
   document.addEventListener("pointermove", e => {
+    if ((mpDrag || pan) && e.pointerType === "mouse" && e.buttons === 0) { end(); return; }   /* the button was let go somewhere we were not told about: stop dragging instead of following the mouse around */
     if (mpDrag) {
       if (!mpDrag.moved && Math.hypot(e.clientX - mpDrag.x, e.clientY - mpDrag.y) < 3) return; mpDrag.moved = true; mpDragged = true;
       const l = LN[S.topic].find(x => x.id === mpDrag.id); if (!l) return; const q = toSvg(mpDrag.s, e);
@@ -352,16 +356,16 @@ const mpSetView = svg => { svg.setAttribute("viewBox", MPV.x + " " + MPV.y + " "
       l.pts[mpDrag.i] = mpLL(mpGeo(S.topic), q.x, q.y); mpRedrawLines(); return;
     }
     if (!pan || mpTDrag) return; const dx = e.clientX - pan.x, dy = e.clientY - pan.y;
-    if (!pan.moved && Math.hypot(dx, dy) < 6) return; pan.moved = true; mpDragged = true;
+    if (!pan.moved && Math.hypot(dx, dy) < mpSlop(e)) return; pan.moved = true; mpDragged = true;
     const k = MPV.w / pan.s.getBoundingClientRect().width; MPV.x = pan.vx - dx * k; MPV.y = pan.vy - dy * k; mpClampView(); mpSetView(pan.s);
   });
-  const end = () => { const d = mpDrag; mpDrag = null; pan = null; if (d && (d.moved || d.added)) { if (d.added) mpDragged = true; render(); mpSave(); } setTimeout(() => { mpDragged = false; }, 0); };
+  const end = () => { const d = mpDrag; mpDrag = null; pan = null; mpPressed = 0; if (d && (d.moved || d.added)) { if (d.added) mpDragged = true; render(); mpSave(); } setTimeout(() => { mpDragged = false; }, 0); };
   window.addEventListener("resize", () => mpLabelsSoon(document.querySelector(".mapsvg")));
-  document.addEventListener("pointerup", end); document.addEventListener("pointercancel", end);
+  document.addEventListener("pointerup", end); document.addEventListener("pointercancel", end); window.addEventListener("blur", end);
   document.addEventListener("click", e => { if (mpDragged) { e.stopPropagation(); e.preventDefault(); mpDragged = false; } }, true);
   document.addEventListener("dblclick", e => { const h = e.target.closest && e.target.closest(".vh[data-a=mapVx]"); if (h && ROLE !== "delegate") { mpVx = Number(h.dataset.i); MAPA.mapDelPt(); } });
   document.addEventListener("wheel", e => {
-    const s = e.target.closest && e.target.closest(".mapsvg"); if (!s || !MPV) return; e.preventDefault();
+    const s = e.target.closest && e.target.closest(".mapsvg"); if (!s || !MPV) return; e.preventDefault(); mpFly++;
     const b = s.getBoundingClientRect(), z = e.deltaY < 0 ? 1.15 : 0.87, px = MPV.x + (e.clientX - b.left) / b.width * MPV.w, py = MPV.y + (e.clientY - b.top) / b.height * MPV.h;
     MPV.w /= z; MPV.h /= z; MPV.x = px - (e.clientX - b.left) / b.width * MPV.w; MPV.y = py - (e.clientY - b.top) / b.height * MPV.h; mpClampView(); mpSetView(s);
   }, { passive: false });
