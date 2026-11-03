@@ -557,6 +557,11 @@ function render() {
   renderSave();
   if (ROLE !== "admin" && typeof mpTroopsLoad === "function") { if (!mpTLoaded) mpTroopsLoad(); else mpTroopSync(); if (ROLE === "delegate") mpForcesPush(); }   /* the chairs' units and the troops on the map stay one thing */
 }
+/* the top bar names the account that is signed in: its role, then its username when that adds something */
+function acctLbl() {
+  const role = { admin: "Administrator", chair: "Chair", delegate: "Delegate" }[ROLE] || "Delegate", u = String((window.SentinelAuth && SentinelAuth.user()) || "");
+  return u && u.toLowerCase() !== role.toLowerCase() && u.toLowerCase() !== ROLE ? `${role} · ${u}` : role;
+}
 function chrome() {
   const d = D(), P = pages().find(p => p.id === UI.page) || pages()[0], sl = selNow();
   { const ad = ROLE === "admin", ab = document.querySelector(".top-actions [data-a=addUnits]"); if (ab) ab.style.display = ad ? "none" : ""; $("undoBtn").style.display = ad ? "none" : ""; $("sideFoot").style.display = ad ? "none" : ""; }
@@ -566,7 +571,7 @@ function chrome() {
   $("nav").innerHTML = pages().map(p => `<button class="nav-i ${p.id === UI.page ? "on" : ""}" data-a="go" data-p="${p.id}" ${p.id === UI.page ? 'aria-current="page"' : ""}>${ico(p.icon)}<span>${p.name}</span>${ct[p.id] ? `<span class="ct">${ct[p.id]}</span>` : ""}</button>`).join("");
   if (ROLE === "chair") $("footNote").innerHTML = "SENTINEL Joint Operations Center &middot; Historical Joint Crisis Committee simulation. Forces are reported by the delegates; morale and every outcome are set by the chairs. Data is kept in this browser only.";
   $("sideFoot").innerHTML = `${DEL ? `<div class="eyebrow">Allocation</div><div><b>${d.alloc.delegation ? esc(d.alloc.delegation) : "Pending"}</b>${d.alloc.portfolio ? ` · ${esc(d.alloc.portfolio)}` : ""}</div>` : ""}${DEL ? "" : `<div>${esc(sideLbl("me"))} <span class="muted">v</span> ${esc(sideLbl("foe"))}</div>`}<div class="sf-n">${DEL ? "Your own running figures. The chairs decide every outcome." : "Forces are reported by the delegates. Morale and every outcome are set by the chairs."}</div>`;
-  $("pageTitle").textContent = P.name; $("pageSub").textContent = P.id === "control" ? "Administrator" : topicLbl();
+  $("pageTitle").textContent = P.name; $("pageSub").textContent = acctLbl();
   $("undoBtn").disabled = !UNDO.length;
   const th = themeNow(); $("dayBtn").classList.toggle("on", th === "light"); $("nightBtn").classList.toggle("on", th === "dark");
   $("dayBtn").setAttribute("aria-pressed", th === "light"); $("nightBtn").setAttribute("aria-pressed", th === "dark");
@@ -1218,7 +1223,7 @@ function arm(btn, fn) {
   btn.dataset.arm = "1"; btn.dataset.t = btn.innerHTML; btn.classList.add("armed"); btn.textContent = "Click again to confirm";
   setTimeout(() => { if (btn.isConnected && btn.dataset.arm) { delete btn.dataset.arm; btn.classList.remove("armed"); btn.innerHTML = btn.dataset.t; } }, 3000);
 }
-function go(p) { UI.page = p; UI.colMenu = null; document.body.classList.remove("nav-open"); saveUI(); render(); window.scrollTo(0, 0); }
+function go(p) { UI.page = p; UI.colMenu = null; document.body.classList.remove("nav-open"); if (!document.body.classList.contains("side-off")) { document.body.classList.add("side-off"); try { localStorage.setItem("sentinel-side", "off"); } catch (e) {} } saveUI(); render(); window.scrollTo(0, 0); }   /* the side bar folds away on every page change and stays shut until the menu button is pressed again */
 
 /* ======================= EVENTS ======================= */
 const A = {
