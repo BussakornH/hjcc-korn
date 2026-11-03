@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SENTINEL · War Games</title>
+<meta name="description" content="SENTINEL is an all-round war game platform: land, sea, air, cyber and crisis-committee simulation on one live map.">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="shortcut icon" href="/favicon.ico">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap">
+<link rel="stylesheet" href="home.css">
+</head>
+<body>
+
+<!-- battlement mark -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mark" viewBox="0 0 120 70">
+    <rect x="0" y="0" width="34" height="13"/><rect x="43" y="0" width="34" height="13"/><rect x="86" y="0" width="34" height="13"/>
+    <rect x="0" y="19" width="56" height="13"/><rect x="62" y="19" width="58" height="13"/>
+    <rect x="0" y="38" width="34" height="13"/><rect x="40" y="38" width="40" height="13"/><rect x="86" y="38" width="34" height="13"/>
+    <rect x="0" y="57" width="58" height="13"/><rect x="64" y="57" width="56" height="13"/>
+  </symbol>
+</svg>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="SENTINEL home"><svg viewBox="0 0 120 70" aria-hidden="true"><use href="#mark"/></svg><b>Sentinel</b></a>
+    <ul>
+      <li><a href="#theatres">Theatres</a></li>
+      <li><a href="#command">Command</a></li>
+      <li><a href="#modes">Modes</a></li>
+      <li><a href="#crisis">Crisis</a></li>
+    </ul>
+    <div class="right">
+      <a class="btn ghost sm" href="index.html">Sign in</a>
+      <a class="btn sm" href="index.html">Enter</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- hero -->
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow rv">War games, all the way round</p>
+    <h1 class="rv">Command every theatre.</h1>
+    <p class="lede rv">SENTINEL brings land, sea, air, cyber and crisis-committee play onto one live map, with forces, rules and an auditable log that every delegate can trust.</p>
+    <div class="cta rv">
+      <a class="btn" href="index.html">Enter the war room</a>
+      <a class="btn ghost" href="#theatres">Explore the theatres</a>
+    </div>
+
+    <div class="stage rv" role="img" aria-label="Illustration of the SENTINEL theatre map with blue and red forces, movement routes and live contact pings">
+      <div class="bar"><i></i><span>Live theatre</span><span id="stamp">UTC</span></div>
+      <svg viewBox="0 0 960 440" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <pattern id="g" width="48" height="48" patternUnits="userSpaceOnUse"><path class="map-grid" d="M48 0H0V48"/></pattern>
+        </defs>
+        <rect width="960" height="440" fill="url(#g)"/>
+        <!-- landmasses -->
+        <path class="map-land" d="M70 120 L150 80 L240 96 L300 150 L280 230 L220 280 L170 250 L120 200 Z"/>
+        <path class="map-land" d="M330 70 L470 60 L560 100 L600 170 L560 230 L480 250 L420 220 L370 160 Z"/>
+        <path class="map-land" d="M620 120 L720 90 L830 110 L890 180 L850 270 L760 300 L690 250 L650 190 Z"/>
+        <path class="map-land" d="M250 300 L330 290 L380 340 L340 400 L270 390 Z"/>
+        <path class="map-land" d="M560 320 L660 310 L720 350 L680 410 L590 400 Z"/>
+        <!-- routes -->
+        <path class="map-route" d="M200 190 C260 140 330 150 400 140"/>
+        <path class="map-route" d="M300 340 C420 300 480 280 520 190"/>
+        <path class="map-route red" d="M780 190 C700 150 640 150 580 150"/>
+        <path class="map-route red" d="M640 360 C620 300 600 260 560 210"/>
+        <!-- blue forces -->
+        <g class="u-blue"><circle cx="200" cy="190" r="6"/><circle cx="400" cy="140" r="6"/><rect x="294" y="334" width="12" height="12" rx="2"/><path d="M520 180 l7 12 h-14z"/></g>
+        <circle class="ring" cx="400" cy="140" r="14"/><circle class="ring" cx="200" cy="190" r="14" style="animation-delay:1s"/>
+        <!-- red forces -->
+        <g class="u-red"><circle cx="780" cy="190" r="6"/><circle cx="580" cy="150" r="6"/><rect x="634" y="354" width="12" height="12" rx="2"/><path d="M560 200 l7 12 h-14z"/></g>
+        <circle class="ring red" cx="580" cy="150" r="14" style="animation-delay:.6s"/><circle class="ring red" cx="780" cy="190" r="14" style="animation-delay:1.8s"/>
+        <text class="map-lbl" x="408" y="128">1st Fleet</text>
+        <text class="map-lbl" x="590" y="140">Vanguard Group</text>
+        <text class="map-lbl" x="210" y="214">Airlift</text>
+        <text class="map-lbl" x="792" y="214">Armor Corps</text>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- stats -->
+<section class="dark deeper" style="padding:56px 0">
+  <div class="wrap stats">
+    <div class="rv"><b>5</b><span>Theatres of play</span></div>
+    <div class="rv"><b>1,400+</b><span>Historical borders</span></div>
+    <div class="rv"><b>24/7</b><span>Live force tracking</span></div>
+    <div class="rv"><b>100%</b><span>Server-side sign-in</span></div>
+  </div>
+</section>
+
+<!-- theatres -->
+<section id="theatres">
+  <div class="wrap">
+    <div class="head center" style="text-align:center">
+      <p class="eyebrow rv">Theatres</p>
+      <h2 class="rv">One platform. Every domain of conflict.</h2>
+      <p class="lede rv" style="margin:0 auto">Plan a single battle or an entire campaign. Switch domains without switching tools.</p>
+    </div>
+    <div class="theatres">
+      <article class="th rv">
+        <svg class="ic" viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 34l10-18 8 12 5-8 9 14z"/><path d="M6 38h32"/></svg>
+        <h3>Land</h3>
+        <p>Divisions, brigades and supply lines on terrain-aware maps. Resolve contact turn by turn or in real time.</p>
+        <span class="tag">Armor · Infantry · Logistics</span>
+      </article>
+      <article class="th rv">
+        <svg class="ic" viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 28h32l-5 8H11z"/><path d="M14 28V16h12l6 12"/><path d="M20 16V8"/></svg>
+        <h3>Sea</h3>
+        <p>Task forces, carrier groups and chokepoints. Control the lanes that decide the war before it starts.</p>
+        <span class="tag">Fleets · Carriers · Submarines</span>
+      </article>
+      <article class="th rv">
+        <svg class="ic" viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 6l4 14 14 6-14 4-4 8-4-8-14-4 14-6z"/></svg>
+        <h3>Air</h3>
+        <p>Sorties, air defense and strategic reach. Win the sky and every other theatre gets easier.</p>
+        <span class="tag">Fighters · Bombers · SAM</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- command -->
+<section id="command" class="tile-parchment">
+  <div class="wrap split">
+    <div>
+      <p class="eyebrow rv">Command</p>
+      <h2 class="rv">A single picture of the whole war.</h2>
+      <p class="lede rv">Every force, every border, every decision on one board. Delegates play their side. The chair sees everything. The administrator keeps the rules honest.</p>
+      <ul class="ticks rv">
+        <li><b>Delegates</b> Command their own forces</li>
+        <li><b>Chairs</b> Watch the whole board, read-only</li>
+        <li><b>Admins</b> Own rules, data and accounts</li>
+      </ul>
+      <a class="link rv" href="index.html">Sign in to command</a>
+    </div>
+    <div class="panel rv" aria-label="Sample force readiness">
+      <h4>Force readiness</h4>
+      <div class="row"><span class="n">1st Fleet</span><span class="pill">Blue</span><span class="bar-t"><i style="width:86%"></i></span><span class="v">86%</span></div>
+      <div class="row"><span class="n">Airlift Wing</span><span class="pill">Blue</span><span class="bar-t"><i style="width:72%"></i></span><span class="v">72%</span></div>
+      <div class="row"><span class="n">Vanguard Group</span><span class="pill red">Red</span><span class="bar-t"><i class="red" style="width:64%"></i></span><span class="v">64%</span></div>
+      <div class="row"><span class="n">Armor Corps</span><span class="pill red">Red</span><span class="bar-t"><i class="red" style="width:91%"></i></span><span class="v">91%</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- modes -->
+<section id="modes">
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow rv">Modes</p>
+      <h2 class="rv">Play it your way.</h2>
+    </div>
+    <div class="modes">
+      <div class="mode rv"><span class="num">01</span><h3>Grand strategy</h3><p>Whole-world campaigns across decades, with borders that move as the war does.</p></div>
+      <div class="mode rv"><span class="num">02</span><h3>Tactical</h3><p>Pick a front, drag units, resolve contact. Fast rounds that fit a class period.</p></div>
+      <div class="mode rv"><span class="num">03</span><h3>Cyber &amp; space</h3><p>Contest the domains you cannot see. Blind a fleet before it sails.</p></div>
+      <div class="mode rv"><span class="num">04</span><h3>Committee</h3><p>Joint crisis committees with directives, a live log and a chair in control.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- quote -->
+<section id="crisis" class="dark quote">
+  <div class="wrap">
+    <p class="eyebrow rv" style="margin-bottom:28px">Built for crisis</p>
+    <blockquote class="rv">Every order logged. Every move reviewable. Every delegate accountable.</blockquote>
+    <cite class="rv">The SENTINEL principle</cite>
+  </div>
+</section>
+
+<!-- final -->
+<section class="final">
+  <div class="wrap">
+    <h2 class="rv">Ready to take your seat?</h2>
+    <p class="lede rv">Access is limited to registered delegates, chairs and administrators.</p>
+    <div class="cta rv">
+      <a class="btn" href="index.html">Sign in</a>
+      <a class="btn ghost" href="topics.html">Browse topics</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="top">
+      <a class="brand" href="#top"><svg viewBox="0 0 120 70" aria-hidden="true"><use href="#mark"/></svg><b>Sentinel</b></a>
+      <div class="cols">
+        <div><b>Play</b><a href="#theatres">Theatres</a><a href="#modes">Modes</a><a href="topics.html">Topics</a></div>
+        <div><b>Access</b><a href="index.html">Sign in</a><a href="#command">Roles</a></div>
+      </div>
+    </div>
+    <p>SENTINEL is a fictional war game and Historical Joint Crisis Committee simulation tool. It is not affiliated with any real agency, company or armed force. All units, fleets and events shown are illustrative.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var els = document.querySelectorAll(".rv");
+  if (!("IntersectionObserver" in window)) { for (var i = 0; i < els.length; i++) els[i].classList.add("in"); }
+  else {
+    var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }); }, { threshold: .12 });
+    for (var j = 0; j < els.length; j++) io.observe(els[j]);
+  }
+  var s = document.getElementById("stamp");
+  function t() { s.textContent = "UTC " + new Date().toISOString().slice(11, 19); } t(); setInterval(t, 1000);
+})();
+</script>
+</body>
+</html>

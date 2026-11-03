@@ -1,0 +1,7 @@
+Historical border data (borders-1400.json, borders-1914.json) is derived from
+aourednik/historical-basemaps, https://github.com/aourednik/historical-basemaps,
+licensed GPL-3.0. Trimmed to Europe and the Near East, coordinates rounded and thinned.
+Borders are approximate. Coastlines (land.json) are from Natural Earth (public domain).
+
+terrain-data.json: rivers and mountain ranges from Natural Earth (public domain, naturalearthdata.com), simplified by scripts/terrain.js.
+dem-t1.png, dem-t2.png: ground heights from the open Terrain Tiles (Terrarium, AWS Open Data; built from SRTM, GMTED and other public elevation sources), by scripts/dem.js.

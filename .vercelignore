@@ -1,0 +1,5 @@
+.data
+.env*
+dev-server.js
+make-account.py
+node_modules

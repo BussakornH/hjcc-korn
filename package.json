@@ -1,0 +1,10 @@
+{
+  "name": "sentinel",
+  "private": true,
+  "scripts": {
+    "dev": "node dev-server.js",
+    "account": "node scripts/account.js"
+  },
+  "dependencies": { "@neondatabase/serverless": "^1.0.0" },
+  "engines": { "node": ">=20" }
+}

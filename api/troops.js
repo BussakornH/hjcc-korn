@@ -1,0 +1,64 @@
+"use strict";
+const L = require("./_lib");
+const CHARS = require("./_chars");
+
+/* Troops placed on the battle map, one list per topic, shared by every screen. Each is a marker: where it stands, its symbol, and a copy of the unit's stats
+   (the chairs' own forces stay in their browser; the copy is what everyone else sees, and the chair's page keeps it up to date).
+   GET                       -> { canEdit, t1: [troop], t2: [troop], mine?: { t1, t2 } }   (any signed-in role; a delegate also gets the side they are on today)
+   POST { topic, troops }    -> replace the topic's troops              (admin, chair)
+   POST { topic, hp: [{ id, hp }] } -> change the HP of troops on your own side   (a delegate, or staff)
+   troop: { id, uid, name, code, aff, side, lat, lon, hp, maxhp, atk, mov, rng, lost } */
+const TOPIC = ["t1", "t2"], MAX = 200;
+const CODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF"];
+const AFF = ["blue", "red", "neutral-green", "neutral-violet", "neutral-slate"];
+const n = (v, lo, hi) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v * 100) / 100)) : null; };
+const clean = (v) => {
+  if (!Array.isArray(v) || v.length > MAX) return null;
+  const seen = new Set(), out = [];
+  for (const x of v) {
+    const id = String((x && x.id) || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24), name = String((x && x.name) || "").trim().slice(0, 40);
+    const lat = n(x && x.lat, -90, 90), lon = n(x && x.lon, -180, 180), hp = n(x && x.hp, 0, 100000), maxhp = n(x && x.maxhp, 0, 100000);
+    if (!id || seen.has(id) || !name || lat === null || lon === null || hp === null || maxhp === null || !CODES.includes(x.code) || !AFF.includes(x.aff)) return null;
+    seen.add(id);
+    out.push({ id, uid: String(x.uid || "").replace(/[^A-Za-z0-9_:-]/g, "").slice(0, 64), name, code: x.code, aff: x.aff, side: x.side === "foe" || x.side === "ne" ? x.side : "me",
+      lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000, hp, maxhp, atk: n(x.atk, 0, 1000) || 0, mov: n(x.mov, 0, 1000) || 0, rng: n(x.rng, 0, 1000) || 0, lost: !!x.lost });
+  }
+  return out;
+};
+/* the side a delegate's character is on today: "me", "foe" or "ne" (the same days the Sides page keeps) */
+async function sideOf(user, t) {
+  const own = (await L.db.allocs())[user] || {}, ch = CHARS.find((c) => c.id === own[t]); if (!ch) return "ne";
+  const days = (await L.db.getKv("days:" + t)) || { days: [{ n: 1, sides: Object.fromEntries(CHARS.filter((c) => c.topic === t).map((c) => [c.id, c.side || "ne"])) }] };
+  return days.days[days.days.length - 1].sides[ch.id] || "ne";
+}
+module.exports = L.wrap(async (req, res) => {
+  const me = await L.session(req);
+  if (!me) return L.send(res, 401, { error: "auth" });
+  const canEdit = me.role === "admin" || me.role === "chair";
+  if (req.method === "GET") {
+    const out = { canEdit, epoch: {} };
+    for (const t of TOPIC) out[t] = (await L.db.getKv("troops:" + t)) || []; for (const t of TOPIC) out.epoch[t] = (await L.db.getKv("epoch:" + t)) || 0;
+    if (me.role === "delegate") { out.mine = {}; for (const t of TOPIC) out.mine[t] = await sideOf(me.u, t); }
+    return L.send(res, 200, out);
+  }
+  if (!L.sameOrigin(req)) return L.send(res, 403, { error: "origin" });
+  if (req.method !== "POST") return L.send(res, 405, { error: "method" });
+  const b = await L.readJson(req), t = String(b.topic || "");
+  if (!TOPIC.includes(t)) return L.send(res, 400, { error: "topic" });
+  if (Array.isArray(b.hp)) {   /* HP only: a delegate may change troops on their own side, nothing else */
+    const side = me.role === "delegate" ? await sideOf(me.u, t) : null; if (me.role === "delegate" && side === "ne") return L.send(res, 403, { error: "neutral" });
+    const list = (await L.db.getKv("troops:" + t)) || []; let changed = false;
+    for (const q of b.hp.slice(0, 200)) {
+      const x = list.find((y) => y.id === String(q && q.id)); const v = Number(q && q.hp);
+      if (!x || !Number.isFinite(v) || (side && x.side !== side)) continue;
+      const hp = Math.min(x.maxhp, Math.max(0, Math.round(v * 100) / 100)); if (hp !== x.hp) { x.hp = hp; x.lost = !(hp > 0); changed = true; }
+    }
+    if (changed) await L.db.setKv("troops:" + t, list);
+    return L.send(res, 200, { ok: true });
+  }
+  if (!canEdit) return L.send(res, 403, { error: "forbidden" });
+  const troops = clean(b.troops);
+  if (!troops) return L.send(res, 400, { error: "troops" });
+  await L.db.setKv("troops:" + t, troops);
+  L.send(res, 200, { ok: true });
+});

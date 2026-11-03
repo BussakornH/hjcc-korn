@@ -1,0 +1,27 @@
+/* Drag and drop extras for the Order of Battle board. Loaded after app.css; colours only via its custom properties. */
+
+/* screen-reader announcements (aria-live region created by dnd.js) */
+.dnd-live { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* the placeholder left in the column while a card is being dragged: reads as "lands here" */
+.card.dragging { background: var(--sky); border-top-color: var(--blue); border-right-color: var(--blue); border-bottom-color: var(--blue); }
+
+/* the floating copy under the pointer */
+.card.ghost { transition: none; will-change: transform; cursor: grabbing; }
+.card.ghost .c-act { display: none !important; }
+
+/* keyboard: card picked up with Space */
+.card.lifted { z-index: 2; background: var(--gold-3); border-top-color: var(--gold-2); border-right-color: var(--gold-2); border-bottom-color: var(--gold-2); box-shadow: 0 0 0 2px var(--gold-2), var(--sh-2); transform: translateY(-2px) rotate(-.6deg); outline: none; }
+.card.lifted .c-act { display: flex; }
+
+/* highlighted drop targets */
+.col.hot .col-empty { border-color: var(--blue); color: var(--blue); background: var(--sky); }
+.tray-z.hot .tz-h { color: var(--blue); }
+
+/* while dragging, no text selection or native callouts anywhere */
+body.dnd { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: contain; }
+.board .card { -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  .card.lifted { transform: none; }
+}

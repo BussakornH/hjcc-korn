@@ -1,0 +1,195 @@
+{
+ "affiliations": {
+  "blue": {
+   "label": "Bluefor",
+   "frame": "friend",
+   "stroke": "#0a7cff",
+   "fill": "#d9eaff",
+   "ink": "#082f63"
+  },
+  "red": {
+   "label": "Redfor",
+   "frame": "hostile",
+   "stroke": "#ff453a",
+   "fill": "#ffdedb",
+   "ink": "#6b0f0a"
+  },
+  "neutral-green": {
+   "label": "Neutral \u00b7 Green",
+   "frame": "neutral",
+   "stroke": "#2fb85a",
+   "fill": "#d6f5df",
+   "ink": "#0b4d24"
+  },
+  "neutral-violet": {
+   "label": "Neutral \u00b7 Violet",
+   "frame": "neutral",
+   "stroke": "#a259f0",
+   "fill": "#eddffc",
+   "ink": "#44197a"
+  },
+  "neutral-slate": {
+   "label": "Neutral \u00b7 Slate",
+   "frame": "neutral",
+   "stroke": "#8a91a0",
+   "fill": "#e6e9ee",
+   "ink": "#262b35"
+  }
+ },
+ "units": {
+  "INF": {
+   "name": "Infantry",
+   "domain": "land",
+   "topics": [
+    "t1",
+    "t2"
+   ]
+  },
+  "L-INF": {
+   "name": "Light Infantry",
+   "domain": "land",
+   "topics": [
+    "t1",
+    "t2"
+   ]
+  },
+  "H-INF": {
+   "name": "Heavy Infantry",
+   "domain": "land",
+   "topics": [
+    "t1",
+    "t2"
+   ]
+  },
+  "M-INF": {
+   "name": "Mechanized Infantry",
+   "domain": "land",
+   "topics": [
+    "t1",
+    "t2"
+   ]
+  },
+  "SF": {
+   "name": "Special Force",
+   "domain": "land",
+   "topics": [
+    "t1",
+    "t2"
+   ]
+  },
+  "CAV": {
+   "name": "Cavalry",
+   "domain": "land",
+   "topics": [
+    "t1",
+    "t2"
+   ]
+  },
+  "ARC": {
+   "name": "Archers",
+   "domain": "land",
+   "topics": [
+    "t1"
+   ]
+  },
+  "SIE": {
+   "name": "Siege Engine",
+   "domain": "land",
+   "topics": [
+    "t1"
+   ]
+  },
+  "GAL": {
+   "name": "War Galley",
+   "domain": "sea",
+   "topics": [
+    "t1"
+   ]
+  },
+  "COG": {
+   "name": "Cog",
+   "domain": "sea",
+   "topics": [
+    "t1"
+   ]
+  },
+  "MAR": {
+   "name": "Marine Infantry",
+   "domain": "land",
+   "topics": [
+    "t1",
+    "t2"
+   ]
+  },
+  "ART": {
+   "name": "Artillery",
+   "domain": "land",
+   "topics": [
+    "t2"
+   ]
+  },
+  "ENG": {
+   "name": "Engineers",
+   "domain": "land",
+   "topics": [
+    "t2"
+   ]
+  },
+  "DES": {
+   "name": "Destroyer",
+   "domain": "sea",
+   "topics": [
+    "t2"
+   ]
+  },
+  "CRU": {
+   "name": "Cruiser",
+   "domain": "sea",
+   "topics": [
+    "t2"
+   ]
+  },
+  "DRD": {
+   "name": "Dreadnought",
+   "domain": "sea",
+   "topics": [
+    "t2"
+   ]
+  },
+  "SUB": {
+   "name": "Submarine",
+   "domain": "sub",
+   "topics": [
+    "t2"
+   ]
+  },
+  "FTR": {
+   "name": "Fighter",
+   "domain": "air",
+   "topics": [
+    "t2"
+   ]
+  },
+  "REC": {
+   "name": "Reconnaissance",
+   "domain": "air",
+   "topics": [
+    "t2"
+   ]
+  },
+  "BMB": {
+   "name": "Bomber",
+   "domain": "air",
+   "topics": [
+    "t2"
+   ]
+  },
+  "NLF": {
+   "name": "Naval Landing Force",
+   "domain": "land",
+   "topics": [
+    "t2"
+   ]
+  }
+ }
+}

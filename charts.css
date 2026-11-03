@@ -1,0 +1,73 @@
+/* HJCC Force Tracker: chart refinements. Loaded AFTER app.css. Colours come only from the app's custom properties. */
+
+/* ---------- area chart ---------- */
+.chart-wrap { position: relative; outline-offset: 4px; border-radius: 4px; --hc-s: 1; }
+.chart-wrap svg.area { touch-action: pan-y; -webkit-tap-highlight-color: transparent; cursor: crosshair; }
+.chart-wrap svg .gl { stroke: var(--line); stroke-opacity: .7; stroke-width: 1; stroke-dasharray: 3 4; }
+.chart-wrap svg .bl { stroke: var(--line); stroke-width: 1.25; }
+/* axis text keeps a constant on-screen size: bind() sets --hc-s to (viewBox width / rendered width) */
+.chart-wrap svg .ax {
+  fill: var(--ink-3);
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: calc(12px * var(--hc-s, 1));
+  font-variant-numeric: tabular-nums;
+}
+.chart-wrap[data-narrow] svg .xo { display: none; }
+.chart-wrap svg .ln, .chart-wrap svg .ar { shape-rendering: geometricPrecision; }
+.chart-wrap svg .hc-end { vector-effect: non-scaling-stroke; }
+
+/* hover guide and points */
+.chart-wrap svg .hc-guide { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; pointer-events: none; }
+.chart-wrap svg .hc-guide.on { opacity: 1; }
+.chart-wrap svg .hc-pt { opacity: 0; pointer-events: none; }
+.chart-wrap svg .hc-pt.on { opacity: 1; }
+
+/* tooltip: panel-coloured so it reads in both Day and Night; gold rule on top */
+.chart-wrap .tip {
+  top: 0; left: 0; transform: none;
+  min-width: 128px;
+  padding: 8px 11px 9px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--sh-2);
+  font: 500 12px/1.4 var(--font);
+  z-index: 3;
+}
+.chart-wrap .tip .tip-h { font: 600 12px/1.3 var(--font); color: var(--ink-3); margin-bottom: 5px; font-variant-numeric: tabular-nums; }
+.chart-wrap .tip .tip-r { display: flex; align-items: center; gap: 0; }
+.chart-wrap .tip .tip-r + .tip-r { margin-top: 3px; }
+.chart-wrap .tip i { flex: none; border-radius: 2px; margin-right: 7px; vertical-align: baseline; }
+.chart-wrap .tip .tip-n { flex: 1; margin-right: 18px; color: var(--ink-2); }
+.chart-wrap .tip b { font: 600 13px var(--font); color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* visually hidden live region for keyboard users */
+.hc-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+.legend span { display: inline-flex; align-items: center; }
+.legend i { border-radius: 2px; }
+
+.chart-empty { background: var(--panel-2); border-color: var(--line); font-family: var(--font); }
+
+/* opt-in draw-in animation: pass { animate: true } to HJCCCharts.area() */
+@media (prefers-reduced-motion: no-preference) {
+  .chart-wrap.anim svg .ln { stroke-dasharray: 1; stroke-dashoffset: 1; animation: hcDraw .9s cubic-bezier(.25, .6, .3, 1) forwards; }
+  .chart-wrap.anim svg .ar { animation: hcFade .9s ease-out both; }
+  .chart-wrap.anim svg .hc-end { animation: hcFade .4s ease-out .75s both; }
+}
+@keyframes hcDraw { to { stroke-dashoffset: 0; } }
+@keyframes hcFade { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------- donut ---------- */
+svg.donut { display: block; overflow: visible; }
+svg.donut .trk { stroke: var(--panel-3); }
+svg.donut .sg { stroke-linecap: butt; transition: stroke-width .15s; }
+svg.donut .sg:hover { stroke-width: calc(var(--sw, 26px) * 1.12); }
+svg.donut .d-big { font-family: var(--font); font-weight: 700; fill: var(--ink); font-variant-numeric: tabular-nums; }
+svg.donut .d-sm { font-family: var(--font); font-weight: 600; letter-spacing: .08em; fill: var(--ink-3); text-transform: uppercase; }
+
+/* ---------- KPI sparkline ---------- */
+svg.spark { display: block; overflow: visible; }
+.tile .spark { opacity: .95; }
