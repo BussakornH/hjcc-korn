@@ -57,7 +57,10 @@ function mpForcesLoad() {
         let u = d.units.find(y => y.id === id);
         const nu = { side: g.side, name: x.name, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng, front, remote: g.user };
         if (!u) { u = mkUnit(d, { side: g.side, t: ty, name: x.name, front, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng }); u.id = id; u.remote = g.user; d.units.push(u); changed = true; return; }
-        Object.keys(nu).forEach(k => { if (u[k] !== nu[k]) { u[k] = nu[k]; changed = true; } });
+        /* A unit with a marker on the map takes its HP (and so its "lost" front) from the marker, not from the delegate's copy: a battle the chair just applied is
+           not on that copy yet, and copying it back here would put the old HP on the unit, which mpTroopSync then sends to the server as if the chair had set it. */
+        const placed = (TR[t] || []).some(m => m.uid === id);
+        Object.keys(nu).forEach(k => { if (placed && (k === "hp" || k === "front")) return; if (u[k] !== nu[k]) { u[k] = nu[k]; changed = true; } });
       });
     });
     if (changed) { save(); if (!mpTDrag && !(typeof dragging === "function" && dragging())) render(); }
