@@ -190,3 +190,8 @@ input:disabled, select:disabled, textarea:disabled { opacity: .55; cursor: not-a
 .brand .lg-d { display: none; }
 :root[data-theme="dark"] .brand .lg-l { display: none; } :root[data-theme="dark"] .brand .lg-d { display: block; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .brand .lg-l { display: none; } :root:not([data-theme="light"]) .brand .lg-d { display: block; } }
+
+/* the battle map page runs edge to edge, so the top bar and footer line up with it instead of the centred column */
+.main:has(.mp-wrap) { --col: 100vw; }
+.main:has(.mp-wrap) .top { padding-inline: 20px; }
+.main:has(.mp-wrap) .foot-note { max-width: none; width: calc(100% - 40px); margin-inline: 20px; }
