@@ -147,7 +147,7 @@ let lastSaved = null, saveErr = false;
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); lastSaved = Date.now(); saveErr = false; } catch (e) { saveErr = true; } renderSave();  if (typeof mpForcesPush === "function") mpForcesPush(); }
 
 /* per-device view state: which page, filters, battle selection, theme */
-const UI = Object.assign({ page: "overview", ovSide: "me", ovMetric: "hp", boardSide: "me", q: "", br: "", rosterSide: "me", open: {}, fold: {}, sel: { att: [], def: [] }, attSide: "me", cm: { att: null, def: null }, mult: 1, bonus: 0, theme: null, steps: true, tv: { atk: 20, morale: 60, hp: 30 } }, (() => { try { return JSON.parse(localStorage.getItem(UIKEY) || "{}") || {}; } catch (e) { return {}; } })());
+const UI = Object.assign({ page: "overview", ovSide: "me", ovMetric: "hp", boardSide: "me", q: "", br: "", rosterSide: "me", open: {}, fold: {}, sel: { att: [], def: [] }, attSide: "me", cm: { att: null, def: null }, mult: 1, bonus: 0, arty: false, theme: null, steps: true, tv: { atk: 20, morale: 60, hp: 30 } }, (() => { try { return JSON.parse(localStorage.getItem(UIKEY) || "{}") || {}; } catch (e) { return {}; } })());
 UI.drawer = null; UI.colMenu = null;
 function saveUI() { try { const { drawer, colMenu, askCb, ...keep } = UI; localStorage.setItem(UIKEY, JSON.stringify(keep)); } catch (e) { /* view state is a convenience only */ } }
 
@@ -316,6 +316,10 @@ function spread(list, h, dmg, mode) {
   else { for (const u of list) { if (left <= 1e-9) break; const v = h.get(u.id), t = Math.min(v, left); h.set(u.id, v - t); left -= t; } }
   return r2(left);
 }
+/* artillery rule: sub class codes that count as artillery, and the option "artillery only hits": it still deals its damage but takes none this engagement (no counter-attack damage, no results-chart loss, no damage when it is the one attacked) */
+const ARTY = ["ART"];
+const isArty = u => !!u && ARTY.includes(u.tcode);
+const noHit = x => ({ ...x, dealt: 0, dmg: 0, pct: 0, self: 0, row: null });
 /* the whole engagement, worked out on copies: nothing changes until commitBattle() */
 function resolve(attIds, defIds, o) {
   const d = D(), R = d.rules, get = o.get || (id => d.units.find(u => u.id === id));
@@ -323,23 +327,27 @@ function resolve(attIds, defIds, o) {
   if (!A.length || !B.length) return null;
   /* shore rule: troops on land (Army, Marine) cannot damage ships. When a ship is attacked only by land troops, or ships attack a shore, the land side's attack is struck out; land troops still fully damage hostiles on the shore. */
   const blocked = (from, to) => to.length && to.every(u => u.branch === "navy") ? from.filter(u => u.branch !== "navy" && u.branch !== "air") : [], bA = blocked(A, B), bB = blocked(B, A);
-  const main = strike(A.filter(u => !bA.includes(u)), B, o.am, o.mult, o.bonus, R);
+  /* artillery that "only hits" is left out of everything that damages its side */
+  const safe = new Set(o.artySafe ? A.concat(B).filter(isArty).map(u => u.id) : []), dA = A.filter(u => !safe.has(u.id)), dB = B.filter(u => !safe.has(u.id));
+  let main = strike(A.filter(u => !bA.includes(u)), dB, o.am, o.mult, o.bonus, R);
+  if (!dB.length) main = noHit(main);
   const hA = new Map(A.map(u => [u.id, num(u.hp)])), hB = new Map(B.map(u => [u.id, num(u.hp)]));
-  const over = spread(B, hB, main.dealt, R.spread);
-  if (main.self > 0) A.forEach(u => hA.set(u.id, Math.max(0, hA.get(u.id) - num(u.hp) * main.self / 100)));
+  const over = dB.length ? spread(dB, hB, main.dealt, R.spread) : 0;
+  if (main.self > 0) dA.forEach(u => hA.set(u.id, Math.max(0, hA.get(u.id) - num(u.hp) * main.self / 100)));
   /* counter-attack: every defender still standing after the hit strikes back at full strength, even one with a sliver of HP left (and even if it took no damage); one reduced to 0 does not */
   const stand = B.filter(u => !bB.includes(u) && hB.get(u.id) > 1e-9);
-  let counter = R.useCounter ? strike(stand, A, o.dm, 1, 0, R) : null;
-  if (counter && !stand.length) counter = { ...counter, dealt: 0, dmg: 0, self: 0, row: null, none: true };
+  let counter = R.useCounter ? strike(stand, dA, o.dm, 1, 0, R) : null;
+  if (counter && !stand.length) counter = { ...noHit(counter), none: true };
+  else if (counter && !dA.length) counter = { ...noHit(counter), safe: true };
   let overC = 0;
-  if (counter) { overC = spread(A, hA, counter.dealt, R.spread); if (counter.self > 0) B.forEach(u => hB.set(u.id, Math.max(0, hB.get(u.id) - num(u.hp) * counter.self / 100))); }
+  if (counter && dA.length) { overC = spread(dA, hA, counter.dealt, R.spread); if (counter.self > 0) dB.forEach(u => hB.set(u.id, Math.max(0, hB.get(u.id) - num(u.hp) * counter.self / 100))); }
   [hA, hB].forEach(h => h.forEach((v, k) => h.set(k, Math.max(0, r2(v)))));
-  return { A, B, main, counter, hA, hB, over, overC, noShip: [...bA, ...bB] };
+  return { A, B, main, counter, hA, hB, over, overC, safe, noShip: [...bA, ...bB] };
 }
 const grpNames = L => L.length === 1 ? L[0].name : `${L[0].name} +${L.length - 1}`;
 function battleMsg(r) {
   const kd = r.B.filter(u => !(r.hB.get(u.id) > 0)).length, ka = r.A.filter(u => !(r.hA.get(u.id) > 0)).length;
-  return `Battle: ${grpNames(r.A)} attacked ${grpNames(r.B)} · ${fx(r.main.dealt)} damage (${f1(r.main.pct)}% of their HP)` + (r.counter ? ` · counter-attack ${fx(r.counter.dealt)}` : "") + (kd ? ` · ${plural(kd, "defender")} destroyed` : "") + (ka ? ` · ${plural(ka, "attacker")} destroyed` : "");
+  return `Battle: ${grpNames(r.A)} attacked ${grpNames(r.B)} · ${fx(r.main.dealt)} damage (${f1(r.main.pct)}% of their HP)` + (r.counter ? ` · counter-attack ${fx(r.counter.dealt)}` : "") + (kd ? ` · ${plural(kd, "defender")} destroyed` : "") + (ka ? ` · ${plural(ka, "attacker")} destroyed` : "") + (r.safe && r.safe.size ? " · artillery only hit (took no damage)" : "");
 }
 function commitBattle(d, r) {
   const rec = { id: uid("b"), t: Date.now(), aSide: r.A[0].side, dSide: r.B[0].side, am: r.main.V.morale, dmg: r.main.dealt, pct: r2(r.main.pct), cdmg: r.counter ? r.counter.dealt : null,
@@ -355,7 +363,7 @@ function selNow() {
   return { aS, dS: other(aS), A: UI.sel.att.map(id => ok(id, aS)).filter(Boolean), D: UI.sel.def.map(id => ok(id, other(aS))).filter(Boolean) };
 }
 function moraleNow(w) { const s = selNow(), side = w === "att" ? s.aS : s.dS; return UI.cm[w] != null ? UI.cm[w] : D().sides[side].morale; }
-function currentResult() { const s = selNow(); return s.A.length && s.D.length ? resolve(s.A.map(u => u.id), s.D.map(u => u.id), { am: moraleNow("att"), dm: moraleNow("def"), mult: UI.mult, bonus: UI.bonus }) : null; }
+function currentResult() { const s = selNow(); return s.A.length && s.D.length ? resolve(s.A.map(u => u.id), s.D.map(u => u.id), { am: moraleNow("att"), dm: moraleNow("def"), mult: UI.mult, bonus: UI.bonus, artySafe: UI.arty }) : null; }
 function applyBattle() {
   const r = currentResult(); if (!r) return;
   const msg = battleMsg(r);
@@ -939,11 +947,16 @@ function pgCombat() {
     ${R.useCounter && R.useMorale ? rng("dm", "def", "Defender morale % (counter-attack)", dm, UI.cm.def != null ? `<button class="lnk" data-a="cmReset" data-w="def">Use ${esc(sideLbl(s.dS))} morale (${fx(d.sides[s.dS].morale)}%)</button>` : `From ${esc(sideLbl(s.dS))}`) : ""}
     ${R.useMult ? `<div class="fld"><label for="mult">Situational multiplier</label><div class="mult"><input id="mult" type="number" step="0.05" min="0" value="${UI.mult}" data-c="mult">${[0.5, 0.75, 1, 1.25, 1.5, 2].map(v => `<button class="chip ${num(UI.mult) === v ? "on" : ""}" data-a="multSet" data-v="${v}">×${v}</button>`).join("")}</div><small>Terrain, fortification, surprise: whatever the chairs rule.</small></div>` : ""}
     ${R.useBonus ? `<div class="fld"><label for="bonus">Flat bonus damage</label><input id="bonus" type="number" step="0.5" value="${UI.bonus}" data-c="bonus"></div>` : ""}
+    ${[...s.A, ...s.D].some(isArty) ? artyBox(s) : ""}
     <div class="formula-mini">Damage formula<code>${esc(formula(R).err ? STD_EXPR : R.expr)}</code></div></div>`;
   return head("Combat calculator", "Tick the units in the engagement. The estimate updates as you go; nothing changes on the forces until you press Apply.", `<button class="btn" data-a="swap">${ico("move")} Swap attacker and defender</button><button class="btn" data-a="clearSel">Clear</button>`) + `
   <section class="cb-grid">${pickPanel("att", s.aS, s.A)}${mid}${pickPanel("def", s.dS, s.D)}</section>
   <section class="panel">${r ? resultHTML(r) : '<div class="none big">Tick at least one attacking unit and one defending unit to see the estimate.</div>'}</section>
   <section class="panel"><div class="panel-h"><div><h3>Battle record</h3></div></div>${battleTable(12)}</section>`;
+}
+function artyBox(s) {
+  const R = D().rules, names = [...s.A, ...s.D].filter(isArty).map(u => u.name), can = R.useCounter || R.useChart;
+  return `<div class="fld"><label>Artillery in this engagement</label><div class="mult"><button class="chip ${UI.arty ? "" : "on"}" data-a="artySet" data-v="dmg" aria-pressed="${!UI.arty}">Takes damage</button><button class="chip ${UI.arty ? "on" : ""}" data-a="artySet" data-v="safe" aria-pressed="${!!UI.arty}">Only hits</button></div><small>${esc(names.join(", "))}. ${UI.arty ? "They deal their damage but take none: not from the counter-attack, not from the results chart, not when they are the target." : "They are damaged like any other unit."}${can ? "" : " Counter-attack and the results chart are both off, so nothing can hurt the attackers right now anyway."}</small></div>`;
 }
 function pickPanel(w, s, selU) {
   const d = D(), ids = new Set(selU.map(u => u.id)), U = d.units.filter(u => u.side === s && !lost(u)), fr = d.fronts.filter(f => U.some(u => u.front === f.id));
@@ -959,7 +972,7 @@ function resultHTML(r) {
   const shore = r.noShip.length ? `<div class="warnbox"><b>Shore rule.</b> Troops on land cannot damage ships, so ${r.noShip.map(u => esc(u.name)).join(", ")} deal${r.noShip.length === 1 ? "s" : ""} no damage here. They can still damage hostiles on the shore.</div>` : "";
   const dn = (a, b, s2, cap) => `<figure>${CH.donut([{ v: b, c: sideCol(s2), t: "HP left" }, { v: a - b, c: "var(--t-lost)", t: "HP lost" }], Math.round(pc(b, a)) + "%", "HP LEFT", { size: 150, sw: 20, label: cap })}<figcaption>${cap}<br>${fx(b)} of ${fx(a)} HP</figcaption></figure>`;
   const rows = [...r.A.map(u => [u, r.hA.get(u.id), "Attacking"]), ...r.B.map(u => [u, r.hB.get(u.id), "Defending"])];
-  const table = `<table class="tbl"><thead><tr><th>Unit</th><th>Role</th><th class="r">HP before</th><th class="r">HP after</th><th class="r">Change</th><th style="width:28%">Strength after</th></tr></thead><tbody>${rows.map(([u, a, w]) => { const ch = r2(a - u.hp), st = u.maxhp > 0 ? a / u.maxhp * 100 : 0; return `<tr><td><span class="sd ${u.side}"></span><b>${esc(u.name)}</b> <small class="muted">${esc(u.tcode || "")}</small></td><td>${w}</td><td class="r mono">${fx(u.hp)}</td><td class="r mono">${fx(a)}</td><td class="r mono ${ch < 0 ? "neg" : ""}">${ch < 0 ? "−" + fx(-ch) : "0"}</td><td>${a > 0 ? `<div class="hpbar"><i class="t-${tierKey(st)}" style="width:${st}%"></i></div>` : '<span class="pill red">Destroyed</span>'}</td></tr>`; }).join("")}</tbody></table>`;
+  const table = `<table class="tbl"><thead><tr><th>Unit</th><th>Role</th><th class="r">HP before</th><th class="r">HP after</th><th class="r">Change</th><th style="width:28%">Strength after</th></tr></thead><tbody>${rows.map(([u, a, w]) => { const ch = r2(a - u.hp), st = u.maxhp > 0 ? a / u.maxhp * 100 : 0; return `<tr><td><span class="sd ${u.side}"></span><b>${esc(u.name)}</b> <small class="muted">${esc(u.tcode || "")}</small>${r.safe.has(u.id) ? ' <span class="pill grey">Only hits</span>' : ""}</td><td>${w}</td><td class="r mono">${fx(u.hp)}</td><td class="r mono">${fx(a)}</td><td class="r mono ${ch < 0 ? "neg" : ""}">${ch < 0 ? "−" + fx(-ch) : "0"}</td><td>${a > 0 ? `<div class="hpbar"><i class="t-${tierKey(st)}" style="width:${st}%"></i></div>` : '<span class="pill red">Destroyed</span>'}</td></tr>`; }).join("")}</tbody></table>`;
   return `${verdict}${shore}${M.ferr ? `<div class="warnbox">Your custom formula has an error (${esc(M.ferr)}), so the standard Attack × Morale formula was used. Fix it on Rules &amp; formulas.</div>` : ""}
     <div class="res-grid"><div class="res-d">${dn(hB0, hB1, s.dS, "Defenders")}${dn(hA0, hA1, s.aS, "Attackers")}</div><div class="tbl-wrap">${table}</div></div>
     <details class="steps" data-k="steps" ${UI.steps ? "open" : ""}><summary>Show the working</summary>${steps(r)}</details>
@@ -972,9 +985,10 @@ function steps(r) {
   li.push(`<li><h4>${n++} · Effective attack</h4><ul>${M.parts.map(x => `<li>${line(x)}</li>`).join("")}</ul><p>Together: <b>${fx(M.V.atk)}</b>${!R.useStr && !R.useMod ? " (no strength rules switched on)" : ""}</p></li>`);
   li.push(`<li><h4>${n++} · Damage formula</h4><p><code>${esc(M.ferr ? STD_EXPR : R.expr)}</code> with ${vs(M.V)} = <b>${fx(M.raw)}</b>${R.rounding !== "none" ? `, ${RND[R.rounding]}: <b>${fx(M.dmg)}</b>` : ""}${R.useMorale ? "" : " (morale is off, so it counts as 100%)"}</p></li>`);
   if (R.useChart && M.row) li.push(`<li><h4>${n++} · Results chart</h4><p>${fx(M.dmg)} damage is ${f1(M.pct)}% of the defenders' ${fx(M.V.hp)} HP → row <b>${esc(rowLabel(R, M.row))}</b>: the defenders take ${fx(M.row.tDmg)}% of it (<b>${fx(M.dealt)}</b>)${num(M.row.aLoss) > 0 ? `, the attackers lose ${fx(M.row.aLoss)}% of their HP` : ""}${M.row.note ? ` · ${esc(M.row.note)}` : ""}</p></li>`);
-  li.push(`<li><h4>${n++} · Spread over the defenders (${SPREAD[R.spread]})</h4><ul>${r.B.map(u => `<li>${esc(u.name)}: ${fx(u.hp)} → <b>${fx(r.hB.get(u.id))}</b></li>`).join("")}</ul>${r.over > 0 ? `<p>${fx(r.over)} damage left over (overkill).</p>` : ""}</li>`);
-  if (r.counter && r.counter.none) li.push(`<li><h4>${n++} · Counter-attack</h4><p>No counter-attack: every defender was destroyed by the hit.</p></li>`);
-  else if (r.counter) li.push(`<li><h4>${n++} · Counter-attack</h4><p>The defenders still standing strike back at full strength, however little HP they have left: effective attack ${fx(r.counter.V.atk)}${R.useMorale ? `, morale ${fx(r.counter.V.morale)}%` : ""} → <b>${fx(r.counter.dealt)}</b> damage over the attackers (no multiplier or bonus).</p><ul>${r.A.map(u => `<li>${esc(u.name)}: ${fx(u.hp)} → <b>${fx(r.hA.get(u.id))}</b></li>`).join("")}</ul></li>`);
+  li.push(`<li><h4>${n++} · Spread over the defenders (${SPREAD[R.spread]})</h4><ul>${r.B.map(u => `<li>${esc(u.name)}: ${fx(u.hp)} → <b>${fx(r.hB.get(u.id))}</b>${r.safe.has(u.id) ? " (artillery only hits, so it takes no damage)" : ""}</li>`).join("")}</ul>${r.over > 0 ? `<p>${fx(r.over)} damage left over (overkill).</p>` : ""}</li>`);
+  if (r.counter && r.counter.safe) li.push(`<li><h4>${n++} · Counter-attack</h4><p>No damage: every attacker is artillery set to “only hits”.</p></li>`);
+  else if (r.counter && r.counter.none) li.push(`<li><h4>${n++} · Counter-attack</h4><p>No counter-attack: every defender was destroyed by the hit.</p></li>`);
+  else if (r.counter) li.push(`<li><h4>${n++} · Counter-attack</h4><p>The defenders still standing strike back at full strength, however little HP they have left: effective attack ${fx(r.counter.V.atk)}${R.useMorale ? `, morale ${fx(r.counter.V.morale)}%` : ""} → <b>${fx(r.counter.dealt)}</b> damage over the attackers (no multiplier or bonus).</p><ul>${r.A.map(u => `<li>${esc(u.name)}: ${fx(u.hp)} → <b>${fx(r.hA.get(u.id))}</b>${r.safe.has(u.id) ? " (artillery only hits, so it takes no damage)" : ""}</li>`).join("")}</ul></li>`);
   return `<ol class="work">${li.join("")}</ol>`;
 }
 
@@ -1297,6 +1311,7 @@ const A = {
   clearSel: () => { UI.sel = { att: [], def: [] }; saveUI(); render(); },
   pickall: el => { const w = el.dataset.w, s = selNow(), side = w === "att" ? s.aS : s.dS, ids = D().units.filter(u => u.side === side && u.front === el.dataset.f && !lost(u)).sort(byOrd).map(u => u.id), all = ids.every(id => UI.sel[w].includes(id)); UI.sel[w] = all ? UI.sel[w].filter(x => !ids.includes(x)) : [...UI.sel[w], ...ids.filter(x => !UI.sel[w].includes(x))]; saveUI(); render(); },
   cmReset: el => { UI.cm[el.dataset.w] = null; saveUI(); render(); },
+  artySet: el => { UI.arty = el.dataset.v === "safe"; saveUI(); render(); },
   multSet: el => { UI.mult = num(el.dataset.v, 1); saveUI(); render(); },
   apply: () => applyBattle(),
   rule: el => { const k = el.dataset.k, v = !D().rules[k]; act(`Rule changed: ${RULE_L[k]} switched ${v ? "on" : "off"}`, d => { d.rules[k] = v; }, "rules"); },
