@@ -8,9 +8,11 @@ const path = require("path");
 const ROLES = ["delegate", "chair", "admin"];
 const SESSION_TTL = 12 * 3600;
 const SCRYPT = { N: 1 << 15, r: 8, p: 1 };
-/* LIMIT_ACCT counts wrong passwords per account FROM ONE ADDRESS; LIMIT_ACCT_ALL is the ceiling across every address (brute-force cap).
+/* LIMIT_IP is deliberately generous: a whole committee can sit behind one venue wifi address, and a few typos must not lock the room out.
+   Brute force on one account is stopped by the two account limits below, so this one only has to catch a single address spraying many usernames.
+   LIMIT_ACCT counts wrong passwords per account FROM ONE ADDRESS; LIMIT_ACCT_ALL is the ceiling across every address (brute-force cap).
    Keeping them apart means strangers cannot lock an account out for its owner with a handful of bad guesses. */
-const LIMIT_WINDOW = 15 * 60, LIMIT_IP = 8, LIMIT_ACCT = 10, LIMIT_ACCT_ALL = 60;
+const LIMIT_WINDOW = 15 * 60, LIMIT_IP = 40, LIMIT_ACCT = 10, LIMIT_ACCT_ALL = 60;
 const MAX_BODY = 256 * 1024;
 const ON_VERCEL = !!process.env.VERCEL;
 const DATA_DIR = path.join(__dirname, "..", ".data");

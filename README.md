@@ -23,6 +23,6 @@ a Neon Postgres database. Nothing secret ships to the browser.
 Seed local accounts with the same `npm run account` command when no `.env.local` is present.
 
 ## Limits
-Eight wrong passwords from one address, or ten against one account from one address, lock sign-in for that address for 15 minutes.
+Forty wrong passwords from one address (a whole room can share one wifi address, so this is generous), or ten against one account from one address, lock sign-in for that address for 15 minutes.
 Sixty wrong passwords against one account from all addresses combined lock that account for 15 minutes (a brute-force ceiling).
 The war-game state itself (forces, log, rules) is still stored in each browser's localStorage, not in the database.
