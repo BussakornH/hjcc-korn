@@ -24,7 +24,7 @@ function mpLoadData(quiet) {
   const bor = MPB[t] ? Promise.resolve() : fetch(c.url).then(r => r.json()).then(j => { MPB[t] = j; }, () => { MPB[t] = { f: [] }; });
   const terr = mpTD ? Promise.resolve() : fetch("terrain-data.json").then(r => r.json()).then(j => { mpTD = j; }, () => { mpTD = { rivers: [], ranges: [] }; });
   const dem = MPREL[t] ? Promise.resolve() : (mpDEM[t] ? Promise.resolve() : mpDemLoad(t)).then(() => mpRelief(t)).then(u => { MPREL[t] = u; }, () => { MPREL[t] = "none"; });
-  const trp = SentinelAuth.api("GET", "/api/troops").then(r => r.ok ? r.json() : null).then(j => { if (j && !mpTPend && !mpTDrag) { mpTrAdopt(j); TRMINE = j.mine || {}; mpTroopSync(); } }, () => {});
+  const gen = mpTGen, trp = SentinelAuth.api("GET", "/api/troops").then(r => r.ok ? r.json() : null).then(j => { if (j && !mpTPend && !mpTDrag && gen === mpTGen) { mpTrAdopt(j); TRMINE = j.mine || {}; mpTroopSync(); } }, () => {});
   const lines = SentinelAuth.api("GET", "/api/lines").then(r => r.ok ? r.json() : Promise.reject());
   return Promise.all([need, bor, lines, terr, dem, trp]).then(a => {
     LN = a[2]; mpLoad = 2;
