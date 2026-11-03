@@ -86,7 +86,6 @@ const pgDb = {
     catch (e) { if (e && e.code === "23505") return false; throw e; }   /* two requests raced for the same character: the loser gets "taken" */
     return true;
   },
-  async count(k) { const r = (await (await pg()).q("SELECT n FROM sentinel_rl WHERE k = $1 AND exp > now()", [k]))[0]; return r ? r.n : 0; },
   async fail(k) {
     const r = await (await pg()).q(
       "INSERT INTO sentinel_rl (k, n, exp) VALUES ($1, 1, now() + $2::interval) ON CONFLICT (k) DO UPDATE SET " +
@@ -95,6 +94,8 @@ const pgDb = {
     return r[0].n;
   },
   async ttl(k) { const r = (await (await pg()).q("SELECT ceil(extract(epoch FROM exp - now()))::int AS t FROM sentinel_rl WHERE k = $1", [k]))[0]; return Math.max(1, r ? r.t : LIMIT_WINDOW); },
+  /* undo one fail(): the attempt it counted was not a wrong guess */
+  async give(k) { await (await pg()).q("UPDATE sentinel_rl SET n = GREATEST(n - 1, 0) WHERE k = $1 AND exp > now()", [k]); },
   async clear(k) { await (await pg()).q("DELETE FROM sentinel_rl WHERE k = $1", [k]); },
   async removedLines() { return (await (await pg()).q("SELECT id FROM sentinel_removed")).map((r) => r.id); },
   async removeLine(id, by) { await (await pg()).q("INSERT INTO sentinel_removed (id, removed_by) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", [id, by]); },
@@ -126,9 +127,9 @@ const fileDb = {
     if (Object.keys(s.alloc2).some((k) => Object.keys(s.alloc2[k]).some((t) => s.alloc2[k][t] === ch && !(k === u && t === topic)))) return false;
     (s.alloc2[u] = s.alloc2[u] || {})[topic] = ch; fsave(s); return true;
   },
-  async count(k) { const r = fload().rl[k]; return r && r.exp > Date.now() ? r.n : 0; },
   async fail(k) { const s = fload(), r = s.rl[k]; s.rl[k] = r && r.exp > Date.now() ? { n: r.n + 1, exp: r.exp } : { n: 1, exp: Date.now() + LIMIT_WINDOW * 1000 }; fsave(s); return s.rl[k].n; },
   async ttl(k) { const r = fload().rl[k]; return Math.max(1, r ? Math.ceil((r.exp - Date.now()) / 1000) : LIMIT_WINDOW); },
+  async give(k) { const s = fload(), r = s.rl[k]; if (r && r.exp > Date.now()) { r.n = Math.max(0, r.n - 1); fsave(s); } },
   async clear(k) { const s = fload(); delete s.rl[k]; fsave(s); },
   async removedLines() { return Object.keys(fload().removed || {}); },
   async removeLine(id, by) { const s = fload(); (s.removed = s.removed || {})[id] = { by, at: Date.now() }; fsave(s); },
@@ -157,6 +158,17 @@ async function hashPassword(pw) {
 async function verifyPassword(pw, stored) {
   const [, N, r, p, s, h] = stored.split("$"), k = await scrypt(pw, Buffer.from(s, "base64"), +N, +r, +p), want = Buffer.from(h, "base64");
   return k.length === want.length && crypto.timingSafeEqual(k, want);
+}
+/* "password" (wrong length), "password-common" (on the list, one repeated character, or the username), or null when it will do */
+const PW_MIN = 10;
+const PW_COMMON = new Set(["1234567890", "0123456789", "12345678910", "123456789a", "a123456789", "qwertyuiop", "1q2w3e4r5t", "1qaz2wsx3edc", "qwerty1234", "qwerty12345",
+  "password12", "password123", "password1234", "passw0rd123", "iloveyou12", "administrator", "letmein123", "welcome123", "changeme123", "abcdefghij", "abc1234567",
+  "sentinel123", "sentinel2026", "hjcc123456", "hjcc2026", "chair12345", "delegate123", "admin12345", "admin123456"]);
+function passwordProblem(p, u) {
+  p = String(p); const lc = p.toLowerCase();
+  if (p.length < PW_MIN || p.length > 200) return "password";
+  if (PW_COMMON.has(lc) || /^(.)\1+$/.test(p) || (u && (lc === u || (u.length >= 4 && lc.includes(u))))) return "password-common";
+  return null;
 }
 let _dummy;
 const dummyHash = () => (_dummy = _dummy || hashPassword("sentinel-dummy"));
@@ -236,4 +248,4 @@ const wrap = (fn) => async (req, res) => {
   }
 };
 
-module.exports = { ROLES, LIMIT_IP, LIMIT_ACCT, LIMIT_ACCT_ALL, db, hashPassword, verifyPassword, dummyHash, makeToken, session, send, readJson, sameOrigin, clientIp, wrap, SESSION_TTL, verOf, updateKv };
+module.exports = { ROLES, LIMIT_IP, LIMIT_ACCT, LIMIT_ACCT_ALL, PW_MIN, db, hashPassword, verifyPassword, passwordProblem, dummyHash, makeToken, session, send, readJson, sameOrigin, clientIp, wrap, SESSION_TTL, verOf, updateKv };

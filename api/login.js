@@ -20,9 +20,13 @@ module.exports = L.wrap(async (req, res) => {
      the overall count is a high ceiling that still caps brute force spread over many addresses. */
   const pairKey = acctKey + "|" + ip;
 
-  const [ipN, pairN, acctN] = await Promise.all([L.db.count(ipKey), L.db.count(pairKey), L.db.count(acctKey)]);
-  if (ipN >= L.LIMIT_IP || pairN >= L.LIMIT_ACCT || acctN >= L.LIMIT_ACCT_ALL) {
-    const lockedKey = ipN >= L.LIMIT_IP ? ipKey : pairN >= L.LIMIT_ACCT ? pairKey : acctKey;
+  /* Every attempt is counted BEFORE the password is checked, and handed back if it turns out not to be a wrong guess. Counting after the
+     (slow) check let a burst of parallel requests all read the old count and all be checked. */
+  const keys = [ipKey, pairKey, acctKey], giveBack = () => Promise.all(keys.map((k) => L.db.give(k)));
+  const [ipN, pairN, acctN] = await Promise.all(keys.map((k) => L.db.fail(k)));
+  if (ipN > L.LIMIT_IP || pairN > L.LIMIT_ACCT || acctN > L.LIMIT_ACCT_ALL) {
+    const lockedKey = ipN > L.LIMIT_IP ? ipKey : pairN > L.LIMIT_ACCT ? pairKey : acctKey;
+    await giveBack();   /* a refused attempt is not a guess */
     const retry = await L.db.ttl(lockedKey);
     return L.send(res, 429, { error: "locked", retry }, { "Retry-After": String(retry) });
   }
@@ -32,11 +36,9 @@ module.exports = L.wrap(async (req, res) => {
   for (const [name, a] of pool) if (!hit && (await L.verifyPassword(p, a.hash))) hit = { u: name, role: a.role, hash: a.hash };
   if (!pool.length) await L.verifyPassword(p, await L.dummyHash()); /* unknown name costs the same time as a real one */
 
-  if (!hit) {
-    await Promise.all([L.db.fail(ipKey), L.db.fail(pairKey), L.db.fail(acctKey)]);
-    return L.send(res, 401, { error: "bad" });
-  }
-  if (hit.role !== role) return L.send(res, 403, { error: "role" });
-  await Promise.all([L.db.clear(ipKey), L.db.clear(pairKey)]);
+  if (!hit) return L.send(res, 401, { error: "bad" });   /* the wrong guess stays counted */
+  if (hit.role !== role) { await giveBack(); return L.send(res, 403, { error: "role" }); }
+  /* the account's overall count only gets this attempt back, so many tabs signing in to one shared account never lock it */
+  await Promise.all([L.db.clear(ipKey), L.db.clear(pairKey), L.db.give(acctKey)]);
   L.send(res, 200, { u: hit.u, role: hit.role, token: L.makeToken(hit.u, hit.role, hit.hash) });
 });

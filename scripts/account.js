@@ -16,6 +16,8 @@ const [u0, p, role] = process.argv.slice(2), u = String(u0 || "").trim().toLower
 if (!/^[a-z0-9._-]{2,32}$/.test(u) || ["__proto__", "constructor", "prototype"].includes(u) || !p || !L.ROLES.includes(role)) {
   console.error("usage: node scripts/account.js <username> <password> <" + L.ROLES.join("|") + ">"); process.exit(1);
 }
+const weak = L.passwordProblem(p, u);
+if (weak) { console.error(weak === "password" ? "password must be " + L.PW_MIN + " to 200 characters" : "that password is too easy to guess, pick another"); process.exit(1); }
 L.hashPassword(p).then((hash) => L.db.putAccount(u, { role, hash })).then(
   () => console.log("saved " + u + " (" + role + ") in " + (process.env.DATABASE_URL ? "the database" : ".data/store.json (local dev)")),
   (e) => { console.error(e.message); process.exit(1); }

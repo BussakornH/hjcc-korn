@@ -1,0 +1,3 @@
+/* Dashboard: signed-in users only; everyone but the admin picks a topic first; plays the entry animation once after sign-in.
+   (Kept out of the page so the CSP can refuse inline scripts.) */
+SentinelAuth.require(); try { if (SentinelAuth.role() !== "admin" && !sessionStorage.getItem("sentinel-topic")) location.replace("topics.html"); } catch (e) {} try { if (sessionStorage.getItem("sentinel-enter")) { sessionStorage.removeItem("sentinel-enter"); document.documentElement.classList.add("enter"); setTimeout(function () { document.documentElement.classList.remove("enter"); }, 1600); } } catch (e) {}

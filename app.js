@@ -517,7 +517,7 @@ function pgSides() {
   <div class="sd-board">${col("me")}${col("ne")}${col("foe")}</div>`;
 }
 const charOpts = (cur, taken, topic) => `<option value="">${esc(TOPICS[topic].title)}: no character</option>` + ALLOC.chars.filter(c => c.topic === topic).map(c => { const who = taken[c.id]; return `<option value="${c.id}" ${c.id === cur ? "selected" : ""} ${who && c.id !== cur ? "disabled" : ""}>${esc(c.name)} · ${esc(c.factionLabel)}${who && c.id !== cur ? " (" + esc(who) + ")" : ""}</option>`; }).join("");
-const ACC_ERR = { username: "Username: 2 to 32 letters, numbers, dots, dashes or underscores", password: "Password must be 6 characters or more", role: "Pick an access level", self: "You cannot remove your own account", "last-admin": "The last administrator cannot be removed", origin: "Request blocked, reload the page", forbidden: "Admin access needed" };
+const ACC_ERR = { username: "Username: 2 to 32 letters, numbers, dots, dashes or underscores", password: "Password must be 10 characters or more", "password-common": "That password is too easy to guess, pick another", role: "Pick an access level", self: "You cannot remove your own account", "last-admin": "The last administrator cannot be removed or lowered", origin: "Request blocked, reload the page", forbidden: "Admin access needed" };
 function loadAcc() {
   return SentinelAuth.api("GET", "/api/accounts").then(r => r.ok ? r.json() : Promise.reject()).then(j => { ACC = j; accErr = ""; }, () => { ACC = ACC || []; accErr = "Could not load the accounts."; }).then(() => { if (UI.page === "control") render(); });
 }
@@ -1254,6 +1254,7 @@ function go(p) { UI.page = p; UI.colMenu = null; document.body.classList.remove(
 /* ======================= EVENTS ======================= */
 const A = {
   go: el => go(el.dataset.p),
+  signOut: () => SentinelAuth.signOut(),
   sdDay: el => { UI.sd = Number(el.dataset.d); saveUI(); render(); },
   sdPick: el => { sdPick = sdPick === el.dataset.id ? null : el.dataset.id; render(); },
   sdPut: el => { if (sdPick) sdMove(sdPick, el.dataset.s); },

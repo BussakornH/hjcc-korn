@@ -117,7 +117,7 @@ module.exports = [
   body: `
   <h2>What you need</h2>
   ${cols(2, [
-    cd("An account at chair level", `<p>Your administrator creates it and gives you a username and password. Passwords are at least 6 characters. One account per person: sign-in attempts are rate-limited, and the administrator can see who is online.</p>`),
+    cd("An account at chair level", `<p>Your administrator creates it and gives you a username and password. Passwords are at least 10 characters, and common ones are refused. One account per person: sign-in attempts are rate-limited, and the administrator can see who is online.</p>`),
     cd("A current web browser", `<p>A recent version of Chrome, Edge, Safari or Firefox on a laptop or desktop works best. The board and the map are designed for a screen at least 1280 pixels wide. Tablets work too: press and hold a card, then drag.</p>`),
     cd("An internet connection", `<p>Sign-in, morale, sides by day, the map, troops and delegates’ forces are all kept on the server, so SENTINEL needs a connection while you work.</p>`),
     cd("Browser storage switched on", `<p>Your rules, battle record and display preferences are stored in this browser. If storage is blocked or full, the page shows <i>“Not saved: browser storage is blocked or full.”</i></p>`)
