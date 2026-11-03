@@ -15,7 +15,8 @@ const mpGeo = t => { const c = MPCFG[t], k = Math.cos(((c.lat[0] + c.lat[1]) / 2
 const mpXY = (g, lat, lon) => [(lon - g.lon0) * g.k * g.sc, (g.top - lat) * g.sc];
 const mpLL = (g, x, y) => [Math.round((g.top - y / g.sc) * 1000) / 1000, Math.round((g.lon0 + x / (g.k * g.sc)) * 1000) / 1000];
 const mpPath = (g, pts) => "M" + pts.map(p => mpXY(g, p[0], p[1]).map(v => v.toFixed(0)).join(" ")).join("L");
-const mpFit = g => ({ x: 0, y: 0, w: g.W, h: g.H });
+/* the map window is always 16:9 (a screen): it shows a band of the theatre across its full width, centred; zoom out to see all of it */
+const mpFit = g => { const h = g.W * 9 / 16; return { x: 0, y: (g.H - h) / 2, w: g.W, h }; };
 
 function mpLoadData(quiet) {
   const t = S.topic, c = MPCFG[t];
@@ -92,7 +93,7 @@ function mpBase(t) {
     const p = mpXY(g, f.c[1], f.c[0]); names += `<text class="cn ${sd}" x="${p[0].toFixed(0)}" y="${p[1].toFixed(0)}">${esc(nm.toUpperCase())}</text>`;
   });
   const clip = B.f.map(f => f.r.filter(inView).map(ring).join("")).join("");
-  return (MPBASE[t] = `<defs><clipPath id="mp-clip"><path d="${clip}"/></clipPath></defs><rect class="sea" width="${g.W.toFixed(0)}" height="${g.H.toFixed(0)}" data-a="mapBg"/>${countries}${MPREL[t] && MPREL[t] !== "none" ? `<g class="relief" clip-path="url(#mp-clip)"><image href="${MPREL[t]}" width="${g.W.toFixed(0)}" height="${g.H.toFixed(0)}" preserveAspectRatio="none"/></g>` : ""}<g class="bdls">${outl}</g>${mpTerrainSvg(g)}${names}`);
+  return (MPBASE[t] = `<defs><clipPath id="mp-clip"><path d="${clip}"/></clipPath></defs><rect class="sea" x="${(-g.W * 2).toFixed(0)}" y="${(-g.W * 2).toFixed(0)}" width="${(g.W * 5).toFixed(0)}" height="${(g.W * 5).toFixed(0)}" data-a="mapBg"/>${countries}${MPREL[t] && MPREL[t] !== "none" ? `<g class="relief" clip-path="url(#mp-clip)"><image href="${MPREL[t]}" width="${g.W.toFixed(0)}" height="${g.H.toFixed(0)}" preserveAspectRatio="none"/></g>` : ""}<g class="bdls">${outl}</g>${mpTerrainSvg(g)}${names}`);
 }
 /* rivers, mountains, thick forest and marsh; drawn as a map would: curved rivers with a dark edge, peaks along the ranges, trees in the woods, reeds in the marsh.
    All of it is sized in map units, so it grows with the zoom, and the names show once you zoom in. */
@@ -226,31 +227,30 @@ function pgMap() {
   const zoom = `<div class="mp-zoom"><button class="btn sm" data-a="mapZoom" data-z="1.3" aria-label="Zoom in">${ico("plus")}</button><button class="btn sm" data-a="mapZoom" data-z="0.77" aria-label="Zoom out">−</button><button class="btn sm" data-a="mapZoom" data-z="0">Fit</button><button class="btn sm${mpTerr ? " on" : ""}" data-a="mapTerr">Terrain</button></div>`;
   const legend = `<div class="mp-key"><span><i class="k-line"></i>Battle line</span><span><i class="k-riv"></i>River</span><span><i class="k-for"></i>Forest</span><span><i class="k-el"></i>Low to high ground</span><span><i class="k-dot"></i>Key city</span><span><i class="k-dot me"></i>${esc(chair ? sideLbl("me") : t === "t2" ? "Allied" : "France")}</span><span><i class="k-dot foe"></i>${esc(chair ? sideLbl("foe") : t === "t2" ? "Central" : "England")}</span><span>Zoom in for more cities</span></div>`;
   setTimeout(() => mpLabels(document.querySelector(".mapsvg")), 0);
-  return head + `<div class="mp-wrap"><div class="mp-board">${zoom}${svg}${legend}</div><aside class="mp-tl">${mpTroopList(t)}</aside></div><aside class="mp-side">${chair ? mpChairPanel(t) : mpViewPanel(t)}</aside>`;
+  return head + `<div class="mp-wrap">${chair ? mpChairBar(t) : mpViewBar(t)}<aside class="mp-tl mp-L"><div class="mp-tl-in">${mpTroopCol(t, "L")}</div></aside><div class="mp-board"><div class="mp-view">${zoom}${svg}</div>${legend}</div><aside class="mp-tl mp-R"><div class="mp-tl-in">${mpTroopCol(t, "R")}</div></aside><div class="mp-foot">${mpTerrCard()}</div></div>`;
 }
 
 const mpTerrCard = () => `<section class="panel mp-card"><div class="panel-h" style="margin:0"><div><h3>Terrain</h3><p>What the ground does to a force</p></div><button class="btn sm" data-a="mapTerrCard" aria-expanded="${mpTerrOpen}">${mpTerrOpen ? "Hide" : "Show"}</button></div>${mpTerrOpen ? `<div style="margin-top:10px">${((window.SENTINEL_TERRAIN || {}).effects || []).map(e => `<div class="tr-fx"><i class="k-${e.k}"></i><div><b>${esc(e.n)}</b><span>${esc(e.move)}</span><span>${esc(e.fight)}</span></div></div>`).join("")}<p class="muted" style="margin-top:10px">Suggested values: put them in the Situational multiplier of the Combat Calculator. The chairs rule on any crossing.</p></div>` : ""}</section>`;
-function mpViewPanel(t) {
+function mpViewBar(t) {
   const L = LN[t];
-  return `<div class="mp-col"><section class="panel mp-card"><div class="panel-h"><div><h3>Battle lines</h3><p>${L.length ? plural(L.length, "line") + " in force" : "None drawn yet"}</p></div></div>${L.map(l => `<button class="mp-u" data-a="mapFocus" data-id="${esc(l.id)}"><b>${esc(l.name)}</b><span>${plural(l.pts.length, "point")}</span></button>`).join("") || '<p class="muted">The chairs have not drawn a battle line yet.</p>'}</section>${mpTerrCard()}</div>`;
+  return `<section class="panel mp-card mp-bar"><div class="mp-bar-h"><h3>Battle lines</h3><span class="muted">${L.length ? plural(L.length, "line") + " in force" : "None drawn yet"}</span></div><div class="mp-chips">${L.map(l => `<button class="mp-u" data-a="mapFocus" data-id="${esc(l.id)}"><b>${esc(l.name)}</b><span>${plural(l.pts.length, "point")}</span></button>`).join("") || '<span class="muted">The chairs have not drawn a battle line yet.</span>'}</div></section>`;
 }
-function mpChairPanel(t) {
+function mpChairBar(t) {
   const L = LN[t], sel = L.find(l => l.id === mpSel);
   const tools = seg("mapTool", [["edit", "Reshape"], ["draw", "Draw a line"], ["city", "Cities"]], mpTool, "t");
   let body = "";
   if (mpTool === "draw") {
-    body = `<p class="muted">Click the map to lay down the points of a new line, from one end to the other.</p><div class="kv"><span>Points</span><b>${mpDraft.length}</b></div>
-      <div class="mp-act"><button class="btn primary" data-a="mapFinish" ${mpDraft.length < 2 ? "disabled" : ""}>Finish line</button><button class="btn" data-a="mapUndoPt" ${mpDraft.length ? "" : "disabled"}>Undo point</button><button class="btn" data-a="mapCancelDraw">Cancel</button></div>`;
+    body = `<span class="muted">Click the map to lay down the points of a new line, from one end to the other.</span><span class="kv"><span>Points</span><b>${mpDraft.length}</b></span>
+      <span class="mp-act"><button class="btn sm primary" data-a="mapFinish" ${mpDraft.length < 2 ? "disabled" : ""}>Finish line</button><button class="btn sm" data-a="mapUndoPt" ${mpDraft.length ? "" : "disabled"}>Undo point</button><button class="btn sm" data-a="mapCancelDraw">Cancel</button></span>`;
   } else if (mpTool === "city") {
     const cur = mpCity && ((LN.citySides && LN.citySides[t]) || {})[mpCity];
-    body = mpCity ? `<div class="mp-sel"><b>${esc(mpCity)}</b><span>${cur ? "Given to a side by the chairs" : "Default"}</span><p class="muted" style="margin:8px 0">Which side holds this city?</p>${seg("mapCitySide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["n", "Neutral"]], cur || "", "s")}<div class="mp-act"><button class="btn sm" data-a="mapCityDef" ${cur ? "" : "disabled"}>Back to default</button></div></div>` : `<p class="muted">Click any city on the map, then give it to a side. Cities on neutral ground work the same way.</p>`;
+    body = mpCity ? `<b>${esc(mpCity)}</b><span class="muted">${cur ? "Given to a side by the chairs" : "Default"}. Which side holds it?</span>${seg("mapCitySide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["n", "Neutral"]], cur || "", "s")}<span class="mp-act"><button class="btn sm" data-a="mapCityDef" ${cur ? "" : "disabled"}>Back to default</button></span>` : `<span class="muted">Click any city on the map, then give it to a side.</span>`;
   } else if (sel) {
-    body = `<div class="mp-sel"><b>${esc(sel.name)}</b><span>${plural(sel.pts.length, "point")}</span>
-      <p class="muted" style="margin:8px 0">Drag a round point to move it. Drag a small point on a segment to bend the line there. ${mpVx != null ? "Press Remove point to delete the chosen point, or double-click it." : "Click a point to choose it."}</p>
-      <p class="muted" style="margin:8px 0 4px">Occupied ground</p>${seg("mapZone", mpClosed(mpGeo(t), sel) ? [["", "Off"], ["w", "Blue inside"], ["e", "Red inside"]] : [["", "Off"], ["w", "Blue in the west"], ["e", "Blue in the east"]], sel.zone || "", "z")}<div class="mp-act" style="flex-wrap:wrap;margin-top:10px"><button class="btn sm" data-a="mapRename">Rename</button><button class="btn sm" data-a="mapSimplify">Fewer points</button><button class="btn sm" data-a="mapDelPt" ${mpVx != null && sel.pts.length > 2 ? "" : "disabled"}>Remove point</button><button class="btn sm danger" data-a="mapDelLine">Delete line</button></div></div>`;
-  } else body = `<p class="muted">Click a line to move or bend it, or draw a new one.</p>`;
-  const list = L.length ? L.map(l => `<button class="mp-u${l.id === mpSel ? " on" : ""}" data-a="mapLine" data-id="${esc(l.id)}"><b>${esc(l.name)}</b><span>${plural(l.pts.length, "point")}</span></button>`).join("") : '<p class="muted">No lines yet.</p>';
-  return `<div class="mp-col"><section class="panel mp-card">${tools}<div style="margin-top:12px">${body}</div></section></div><div class="mp-col"><section class="panel mp-card"><div class="panel-h"><div><h3>Battle lines</h3></div><button class="btn sm" data-a="mapReset">Restore defaults</button></div>${list}</section>${mpTerrCard()}</div>`;
+    body = `<b>${esc(sel.name)}</b><span class="muted">${plural(sel.pts.length, "point")}. Drag a round point to move it, a small one to bend the line. ${mpVx != null ? "Remove point, or double-click it, deletes the chosen point." : "Click a point to choose it."}</span>
+      ${seg("mapZone", mpClosed(mpGeo(t), sel) ? [["", "Off"], ["w", "Blue inside"], ["e", "Red inside"]] : [["", "Off"], ["w", "Blue in the west"], ["e", "Blue in the east"]], sel.zone || "", "z")}<span class="mp-act"><button class="btn sm" data-a="mapRename">Rename</button><button class="btn sm" data-a="mapSimplify">Fewer points</button><button class="btn sm" data-a="mapDelPt" ${mpVx != null && sel.pts.length > 2 ? "" : "disabled"}>Remove point</button><button class="btn sm danger" data-a="mapDelLine">Delete line</button></span>`;
+  } else body = `<span class="muted">Click a line to move or bend it, or draw a new one.</span>`;
+  const list = L.length ? L.map(l => `<button class="mp-u${l.id === mpSel ? " on" : ""}" data-a="mapLine" data-id="${esc(l.id)}"><b>${esc(l.name)}</b><span>${plural(l.pts.length, "point")}</span></button>`).join("") : '<span class="muted">No battle lines yet.</span>';
+  return `<section class="panel mp-card mp-bar"><div class="mp-bar-r">${tools}<div class="mp-bar-b">${body}</div></div><div class="mp-bar-r"><h3>Battle lines</h3><div class="mp-chips">${list}</div><button class="btn sm" data-a="mapReset">Restore defaults</button></div></section>`;
 }
 
 const MAPA = {
@@ -275,7 +275,7 @@ const MAPA = {
   mapFocus: el => {
     const l = LN[S.topic].find(x => x.id === el.dataset.id); if (!l) return; const g = mpGeo(S.topic), ps = l.pts.map(p => mpXY(g, p[0], p[1]));
     const x0 = Math.min(...ps.map(p => p[0])), x1 = Math.max(...ps.map(p => p[0])), y0 = Math.min(...ps.map(p => p[1])), y1 = Math.max(...ps.map(p => p[1])), f = mpFit(g);
-    MPV.w = Math.max(f.w / 4, (x1 - x0) * 1.5); MPV.h = MPV.w * f.h / f.w; MPV.x = (x0 + x1) / 2 - MPV.w / 2; MPV.y = (y0 + y1) / 2 - MPV.h / 2; mpClampView(); render();
+    MPV.w = Math.max(f.w / 4, (x1 - x0) * 1.5, (y1 - y0) * 1.5 * 16 / 9); MPV.h = MPV.w * 9 / 16; MPV.x = (x0 + x1) / 2 - MPV.w / 2; MPV.y = (y0 + y1) / 2 - MPV.h / 2; mpClampView(); render();
   },
   mapFinish: () => {
     if (mpDraft.length < 2) return;
@@ -306,7 +306,11 @@ const MAPA = {
 };
 const MAPC = {}, MAPI = {};
 
-function mpClampView() { const f = mpFit(mpGeo(S.topic)); MPV.w = Math.min(f.w * 1.1, Math.max(f.w / 40, MPV.w)); MPV.h = MPV.w * f.h / f.w; MPV.x = Math.min(f.w * 1.05 - MPV.w, Math.max(-f.w * 0.05, MPV.x)); MPV.y = Math.min(f.h * 1.05 - MPV.h, Math.max(-f.h * 0.05, MPV.y)); }
+function mpClampView() {
+  const g = mpGeo(S.topic), maxW = Math.max(g.W, g.H * 16 / 9) * 1.05; MPV.w = Math.min(maxW, Math.max(g.W / 40, MPV.w)); MPV.h = MPV.w * 9 / 16;
+  const ax = (p, len, size) => { const lo = -size * 0.05, hi = size * 1.05; return len >= hi - lo ? (lo + hi - len) / 2 : Math.min(hi - len, Math.max(lo, p)); };
+  MPV.x = ax(MPV.x, MPV.w, g.W); MPV.y = ax(MPV.y, MPV.h, g.H);
+}
 const mpSetView = svg => { svg.setAttribute("viewBox", MPV.x + " " + MPV.y + " " + MPV.w + " " + MPV.h); mpZoomAttr(svg); };
 /* drag a point, drag the map to pan, wheel to zoom: the viewBox or the lines layer change, the page is not redrawn */
 (function () {

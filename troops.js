@@ -252,16 +252,19 @@ function mpTroopCard() {
     ${chair ? `<div class="mp-act" style="flex-wrap:wrap;margin-top:12px">${local ? `<button class="btn sm" data-a="mapTrHp" data-d="-1">−1 HP</button><button class="btn sm" data-a="mapTrHp" data-d="1">+1 HP</button><button class="btn sm" data-a="mapTrTray">${ico("swords")} Battle tray</button>` : ""}<button class="btn sm danger" data-a="mapTrDel">Take off the map</button></div>
 ${local ? "" : '<p class="muted" style="margin-top:8px">This troop is not in your forces on this device, so its HP cannot be changed here.</p>'}` : ""}</section>`;
 }
-let mpPSide = "me", mpLDrag = null;
+let mpLDrag = null;
 const mpAffOf = s => s === "me" ? "blue" : s === "foe" ? "red" : "neutral-slate";
-/* the troop list at the right of the map: the kinds of troop to drag onto it (chairs), the card of the chosen troop, and every troop on the map */
-function mpTroopList(t) {
-  const chair = ROLE !== "delegate", d = D(), aff = mpAffOf(mpPSide), ty = mpPlace && d.units.find(x => x.id === mpPlace);
-  const placed = new Set(mpTroops().map(x => x.uid)), free = d.units.filter(u => u.side === mpPSide && !lost(u) && !placed.has(u.id)), fn = id => id === "reserve" ? "Reserve" : ((d.fronts.find(f => f.id === id) || {}).name || "Front");
-  const kinds = chair ? `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 8px"><div><h3>Order of battle</h3><p>${ty ? `Click the map to put down ${esc(ty.name)}. Esc to stop.` : "Your units, drag one onto the map"}</p></div></div>${seg("mapTrSide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["ne", "Neutral"]], mpPSide, "s")}<div class="trt-g">${free.map(u => `<div class="trt${u.id === mpPlace ? " on" : ""}" role="button" tabindex="0" data-a="mapTrType" data-id="${esc(u.id)}" title="Drag onto the map, or click and then click the map"><img src="symbols/${aff}/${esc(MPCODES.includes(u.tcode) ? u.tcode : "INF")}.png" alt="" draggable="false"><span><b>${esc(u.name)}</b><i>${esc(fn(u.front))} · ATK ${fx(u.atk)} · HP ${fx(u.hp)}/${fx(u.maxhp)} · MOV ${fx(u.mov)}</i></span></div>`).join("") || '<p class="muted" style="margin:8px 0 0">Every unit on this side is on the map. Add more on the Order of Battle page.</p>'}</div></section>` : "";
-  const on = mpTroops().slice().sort((a, b) => (a.side === b.side ? 0 : a.side === "me" ? -1 : 1) || a.name.localeCompare(b.name));
-  const list = `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 6px"><div><h3>On the map</h3><p>${on.length ? plural(on.length, "troop") : "No troops placed yet"}</p></div></div>${on.map(x => { const pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0; return `<button class="trl-row${x.id === mpTS ? " on" : ""}${x.lost ? " dead" : ""}" data-a="mapTroop" data-id="${esc(x.id)}"><img src="symbols/${x.aff}/${esc(x.code)}.png" alt=""><span><b>${esc(x.name)}</b><em><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></em></span><small>${fx(x.hp)}/${fx(x.maxhp)}</small></button>`; }).join("")}</section>`;
-  return mpTroopCard() + kinds + list;
+/* the two troop columns beside the map: Allied on the left, Central Powers on the right (either can switch to Neutral). Each holds the units still to drag onto the map (chairs) and the troops of that side on it; the card of the chosen troop sits at the top of its side */
+let mpColL = "me", mpColR = "foe";
+function mpTroopCol(t, col) {
+  const chair = ROLE !== "delegate", d = D(), side = col === "L" ? mpColL : mpColR, other = col === "L" ? "me" : "foe", aff = mpAffOf(side), ty = mpPlace && d.units.find(x => x.id === mpPlace);
+  const sel = mpTrFind(mpTS), card = sel && (col === "L" ? (sel.side === "me" || (sel.side === "ne" && mpColL === "ne")) : !(sel.side === "me" || (sel.side === "ne" && mpColL === "ne"))) ? mpTroopCard() : "";
+  const placed = new Set(mpTroops().map(x => x.uid)), free = d.units.filter(u => u.side === side && !lost(u) && !placed.has(u.id)), fn = id => id === "reserve" ? "Reserve" : ((d.fronts.find(f => f.id === id) || {}).name || "Front");
+  const tabs = seg(col === "L" ? "mapTrSideL" : "mapTrSideR", [[other, sideLbl(other)], ["ne", "Neutral"]], side, "s");
+  const kinds = chair ? `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 8px"><div><h3>Order of battle</h3><p>${ty && ty.side === side ? `Click the map to put down ${esc(ty.name)}. Esc to stop.` : "Your units, drag one onto the map"}</p></div></div>${tabs}<div class="trt-g">${free.map(u => `<div class="trt${u.id === mpPlace ? " on" : ""}" role="button" tabindex="0" data-a="mapTrType" data-id="${esc(u.id)}" title="Drag onto the map, or click and then click the map"><img src="symbols/${aff}/${esc(MPCODES.includes(u.tcode) ? u.tcode : "INF")}.png" alt="" draggable="false"><span><b>${esc(u.name)}</b><i>${esc(fn(u.front))} · ATK ${fx(u.atk)} · HP ${fx(u.hp)}/${fx(u.maxhp)} · MOV ${fx(u.mov)}</i></span></div>`).join("") || '<p class="muted" style="margin:8px 0 0">Every unit on this side is on the map. Add more on the Order of Battle page.</p>'}</div></section>` : "";
+  const on = mpTroops().filter(x => x.side === side).sort((a, b) => a.name.localeCompare(b.name));
+  const list = `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 6px"><div><h3>${chair ? "On the map" : esc(sideLbl(side === "ne" ? other : side)) + " on the map"}</h3><p>${on.length ? plural(on.length, "troop") : "No troops placed yet"}</p></div></div>${chair ? "" : tabs}${on.map(x => { const pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0; return `<button class="trl-row${x.id === mpTS ? " on" : ""}${x.lost ? " dead" : ""}" data-a="mapTroop" data-id="${esc(x.id)}"><img src="symbols/${x.aff}/${esc(x.code)}.png" alt=""><span><b>${esc(x.name)}</b><em><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></em></span><small>${fx(x.hp)}/${fx(x.maxhp)}</small></button>`; }).join("")}</section>`;
+  return card + kinds + list;
 }
 const MPCODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF"];
 
@@ -270,7 +273,8 @@ Object.assign(MAPA, {
     const x = mpTS && mpTrFind(mpTS);
     if (x && MPV && el.closest(".mp-tl")) { const p = mpXY(mpGeo(S.topic), x.lat, x.lon), m = 0; if (p[0] < MPV.x + m || p[0] > MPV.x + MPV.w - m || p[1] < MPV.y + m || p[1] > MPV.y + MPV.h - m) { MPV.x = p[0] - MPV.w / 2; MPV.y = p[1] - MPV.h / 2; mpClampView(); } }   /* a troop out of sight comes into view */
     render(); },
-  mapTrSide: el => { mpPSide = el.dataset.s; render(); },
+  mapTrSideL: el => { mpColL = el.dataset.s; render(); },
+  mapTrSideR: el => { mpColR = el.dataset.s; render(); },
   mapTrType: el => { mpPlace = mpPlace === el.dataset.id ? null : el.dataset.id; mpTS = null; render(); },
   mapTrDel: () => { const t = S.topic; TR[t] = mpTroops().filter(x => x.id !== mpTS); mpTS = null; render(); mpTroopSave(); },
   mapTrAff: el => { const x = mpTrFind(mpTS); if (!x) return; x.aff = el.dataset.f; render(); mpTroopSave(); },
