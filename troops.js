@@ -2,7 +2,7 @@
 /* SENTINEL troops on the battle map: the chairs place a unit from their forces anywhere on the map, drag it, and everyone sees it with its symbol and its HP.
    Click a troop and a reach line shows how far it can move this turn, shortened by mountains, forest, marsh, rivers and the sea.
    Loaded after map.js (it adds to MAPA) and before app.js. Stored on the server by api/troops.js. */
-let TR = { t1: [], t2: [] }, mpTPend = 0, mpTS = null, mpPlace = null, mpTDrag = null, mpRG = null, mpTSaveT = 0;
+let TR = { t1: [], t2: [] }, mpTPend = 0, mpTGen = 0, mpTS = null, mpPlace = null, mpTDrag = null, mpRG = null, mpTSaveT = 0;
 const MPAFF = [["blue", "Blue"], ["red", "Red"], ["neutral-green", "Green"], ["neutral-violet", "Violet"], ["neutral-slate", "Slate"]];
 const MPAFFC = { blue: "#0a7cff", red: "#ff453a", "neutral-green": "#2fb85a", "neutral-violet": "#a259f0", "neutral-slate": "#8a91a0" };
 const MPSEA = ["GAL", "COG", "DES", "CRU", "DRD", "SUB"], MPAIR = ["FTR", "REC", "BMB"];
@@ -21,6 +21,9 @@ let mpTLoaded = false, TRMINE = {};
    A save sends the tag; if the list has changed since (a delegate's HP change, another chair), the server refuses with 409 and
    the chair's edits are merged onto the new list (troops-merge.js) instead of overwriting it. */
 const TRVER = { t1: "0", t2: "0" }, TRB = { t1: [], t2: [] }, mpClone = v => JSON.parse(JSON.stringify(v));
+/* mpTGen counts local troop changes (a save queued, a save finished, an HP patch sent). A reload remembers the count when it is sent and is
+   thrown away if the count has moved by the time the answer arrives: the answer was read before our change reached the server, and applying it
+   would put the old HP back on screen (and, if the chair then moved a unit, back on the server). The next reload picks the list up instead. */
 function mpTrAdopt(j) {
   ["t1", "t2"].forEach(t => { TR[t] = j[t] || []; TRVER[t] = (j.ver && j.ver[t]) || "0"; TRB[t] = mpClone(TR[t]); });
 }
@@ -90,10 +93,10 @@ function mpEpoch(ep) {
   if (ch) { UNDO.length = 0; save(); render(); }
 }
 function mpTroopsLoad() {
-  mpTLoaded = true; const fp = mpForcesLoad();
+  mpTLoaded = true; const fp = mpForcesLoad(), gen = mpTGen;
   return SentinelAuth.api("GET", "/api/troops").then(r => r.ok ? r.json() : null).then(j => {
     if (!j) return; mpEpoch(j.epoch);
-    if (mpTPend || mpTDrag) return; mpTrAdopt(j); TRMINE = j.mine || {};
+    if (mpTPend || mpTDrag || gen !== mpTGen) return; mpTrAdopt(j); TRMINE = j.mine || {};
     if (mpTroopSync() && typeof UI !== "undefined" && UI.page !== "map") render();   /* the forces list changed under you */
     fp.then(mpChairRepair);
   }, () => {});
@@ -127,13 +130,13 @@ function mpTroopSync() {
     });
   });
   if (push) mpTroopSave();
-  Object.keys(patch).forEach(t => SentinelAuth.api("POST", "/api/troops", { topic: t, hp: Object.keys(patch[t]).map(id => ({ id, hp: patch[t][id] })) }).catch(() => {}));
+  Object.keys(patch).forEach(t => { mpTGen++; SentinelAuth.api("POST", "/api/troops", { topic: t, hp: Object.keys(patch[t]).map(id => ({ id, hp: patch[t][id] })) }).catch(() => {}).then(() => { mpTGen++; }); });
   return local;
 }
 /* Saves are batched for a quarter second. Each one carries the version tag it is based on; on 409 ("stale") the chair's edits are merged
    onto the list the server sent back and the save is tried again, a few times at most. */
 const mpTDirty = new Set(); let mpTBusy = false;
-function mpTroopSave() { mpTDirty.add(S.topic); mpTPend = 1; clearTimeout(mpTSaveT); mpTSaveT = setTimeout(mpTroopFlush, 250); }
+function mpTroopSave() { mpTGen++; mpTDirty.add(S.topic); mpTPend = 1; clearTimeout(mpTSaveT); mpTSaveT = setTimeout(mpTroopFlush, 250); }
 async function mpTroopFlush() {
   mpTSaveT = 0;
   if (mpTBusy) { mpTSaveT = setTimeout(mpTroopFlush, 250); return; }
@@ -150,8 +153,8 @@ async function mpTroopFlush() {
         throw new Error("troops");
       }
     }
-  } catch (e) { mpTDirty.clear(); mpTBusy = false; mpTPend = 0; toast("Could not save the troops, try again"); mpTroopsLoad(); return; }
-  mpTBusy = false; mpTPend = mpTDirty.size || mpTSaveT ? 1 : 0;
+  } catch (e) { mpTGen++; mpTDirty.clear(); mpTBusy = false; mpTPend = 0; toast("Could not save the troops, try again"); mpTroopsLoad(); return; }
+  mpTGen++; mpTBusy = false; mpTPend = mpTDirty.size || mpTSaveT ? 1 : 0;
   if (merged) { mpTroopSync(); mpRG = null; if (!mpTDrag) render(); }   /* someone else's change came in: show it and carry it into this chair's own units */
 }
 
