@@ -3,3 +3,6 @@
 dev-server.js
 make-account.py
 node_modules
+manual/src
+manual/build.js
+manual/pdf.js

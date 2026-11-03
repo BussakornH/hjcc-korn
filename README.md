@@ -35,3 +35,11 @@ A delegate's HP change and a chair's save are applied on top of each other; two 
 get a "stale" answer for the second one, and its page merges its own edits onto the newer list and saves again (`troops-merge.js`).
 Where the same field of the same troop was changed by both, the chair's value wins. Battle lines are still saved as a whole list,
 so two chairs redrawing lines at the same moment can still overwrite each other.
+
+## Chair's manual
+`manual/index.html` is the Chair's Manual (50 A4 pages), linked from the home page footer; `manual/sentinel-chair-manual.pdf` is the same thing as a PDF. Both are built from `manual/src/` (page text in `p1.js` to `p5.js`, design in `style.css`, screenshots in `manual/img/`):
+```
+node manual/build.js     # writes manual/index.html and checks cross-references
+node manual/pdf.js       # prints it to manual/sentinel-chair-manual.pdf (needs Playwright); --check only reports pages that are too full
+```
+The screenshots were taken from the running app (`npm run dev`) signed in as a chair. Retake them when a screen changes.
