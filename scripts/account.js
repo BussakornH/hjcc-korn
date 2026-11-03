@@ -13,7 +13,7 @@ for (const f of [".env.local", ".env"]) {
 }
 const L = require("../api/_lib");
 const [u0, p, role] = process.argv.slice(2), u = String(u0 || "").trim().toLowerCase();
-if (!/^[a-z0-9._-]{2,32}$/.test(u) || !p || !L.ROLES.includes(role)) {
+if (!/^[a-z0-9._-]{2,32}$/.test(u) || ["__proto__", "constructor", "prototype"].includes(u) || !p || !L.ROLES.includes(role)) {
   console.error("usage: node scripts/account.js <username> <password> <" + L.ROLES.join("|") + ">"); process.exit(1);
 }
 L.hashPassword(p).then((hash) => L.db.putAccount(u, { role, hash })).then(

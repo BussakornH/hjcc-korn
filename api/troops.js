@@ -4,9 +4,12 @@ const CHARS = require("./_chars");
 
 /* Troops placed on the battle map, one list per topic, shared by every screen. Each is a marker: where it stands, its symbol, and a copy of the unit's stats
    (the chairs' own forces stay in their browser; the copy is what everyone else sees, and the chair's page keeps it up to date).
-   GET                       -> { canEdit, t1: [troop], t2: [troop], mine?: { t1, t2 } }   (any signed-in role; a delegate also gets the side they are on today)
-   POST { topic, troops }    -> replace the topic's troops              (admin, chair)
-   POST { topic, hp: [{ id, hp }] } -> change the HP of troops on your own side   (a delegate, or staff)
+   GET                       -> { canEdit, t1: [troop], t2: [troop], ver: { t1, t2 }, mine?: { t1, t2 } }   (any signed-in role; a delegate also gets the side they are on today)
+   POST { topic, troops, base } -> replace the topic's troops              (admin, chair)
+        base is the ver the caller last saw. If the list has changed since (a delegate's HP change, another chair's edit) nothing is written and the
+        answer is 409 { error: "stale", ver, troops: <the current list> }, so the caller can merge its own edits onto it and send again.
+        200 { ok, ver, troops } carries the new ver and the list as stored.
+   POST { topic, hp: [{ id, hp }] } -> change the HP of troops on your own side   (a delegate, or staff). Applied on top of whatever is stored, never lost to a concurrent save.
    troop: { id, uid, name, code, aff, side, lat, lon, hp, maxhp, atk, mov, rng, lost } */
 const TOPIC = ["t1", "t2"], MAX = 200;
 const CODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF"];
@@ -36,8 +39,9 @@ module.exports = L.wrap(async (req, res) => {
   if (!me) return L.send(res, 401, { error: "auth" });
   const canEdit = me.role === "admin" || me.role === "chair";
   if (req.method === "GET") {
-    const out = { canEdit, epoch: {} };
-    for (const t of TOPIC) out[t] = (await L.db.getKv("troops:" + t)) || []; for (const t of TOPIC) out.epoch[t] = (await L.db.getKv("epoch:" + t)) || 0;
+    const out = { canEdit, epoch: {}, ver: {} };
+    for (const t of TOPIC) { const raw = await L.db.getKvRaw("troops:" + t); out[t] = (raw && JSON.parse(raw)) || []; out.ver[t] = L.verOf(raw); }
+    for (const t of TOPIC) out.epoch[t] = (await L.db.getKv("epoch:" + t)) || 0;
     if (me.role === "delegate") { out.mine = {}; for (const t of TOPIC) out.mine[t] = await sideOf(me.u, t); }
     return L.send(res, 200, out);
   }
@@ -47,18 +51,24 @@ module.exports = L.wrap(async (req, res) => {
   if (!TOPIC.includes(t)) return L.send(res, 400, { error: "topic" });
   if (Array.isArray(b.hp)) {   /* HP only: a delegate may change troops on their own side, nothing else */
     const side = me.role === "delegate" ? await sideOf(me.u, t) : null; if (me.role === "delegate" && side === "ne") return L.send(res, 403, { error: "neutral" });
-    const list = (await L.db.getKv("troops:" + t)) || []; let changed = false;
-    for (const q of b.hp.slice(0, 200)) {
-      const x = list.find((y) => y.id === String(q && q.id)); const v = Number(q && q.hp);
-      if (!x || !Number.isFinite(v) || (side && x.side !== side)) continue;
-      const hp = Math.min(x.maxhp, Math.max(0, Math.round(v * 100) / 100)); if (hp !== x.hp) { x.hp = hp; x.lost = !(hp > 0); changed = true; }
-    }
-    if (changed) await L.db.setKv("troops:" + t, list);
+    const want = b.hp.slice(0, 200).map((q) => ({ id: String(q && q.id), v: Number(q && q.hp) })).filter((q) => Number.isFinite(q.v));
+    await L.updateKv("troops:" + t, (cur) => {   /* runs again on the fresh list if someone else saved in the meantime */
+      const list = cur || []; let changed = false;
+      for (const q of want) {
+        const x = list.find((y) => y.id === q.id);
+        if (!x || (side && x.side !== side)) continue;
+        const hp = Math.min(x.maxhp, Math.max(0, Math.round(q.v * 100) / 100)); if (hp !== x.hp) { x.hp = hp; x.lost = !(hp > 0); changed = true; }
+      }
+      return changed ? list : undefined;
+    });
     return L.send(res, 200, { ok: true });
   }
   if (!canEdit) return L.send(res, 403, { error: "forbidden" });
   const troops = clean(b.troops);
   if (!troops) return L.send(res, 400, { error: "troops" });
-  await L.db.setKv("troops:" + t, troops);
-  L.send(res, 200, { ok: true });
+  const key = "troops:" + t, stale = (raw) => L.send(res, 409, { error: "stale", ver: L.verOf(raw), troops: (raw && JSON.parse(raw)) || [] });
+  const raw = await L.db.getKvRaw(key);
+  if (String(b.base == null ? "" : b.base) !== L.verOf(raw)) return stale(raw);
+  if (!(await L.db.casKv(key, raw, troops))) return stale(await L.db.getKvRaw(key));   /* someone saved between our read and our write */
+  L.send(res, 200, { ok: true, ver: L.verOf(JSON.stringify(troops)), troops });
 });

@@ -13,10 +13,10 @@ module.exports = L.wrap(async (req, res) => {
     return L.send(res, 200, Object.keys(all).sort().map((u) => ({ u, role: all[u].role })));
   }
   if (!L.sameOrigin(req)) return L.send(res, 403, { error: "origin" });
-  const b = await L.readJson(req), u = String(b.u || "").trim().toLowerCase();
+  const b = await L.readJson(req, 4096), u = String(b.u || "").trim().toLowerCase();
   if (req.method === "POST") {
     const p = String(b.p || ""), role = String(b.role || "");
-    if (!/^[a-z0-9._-]{2,32}$/.test(u)) return L.send(res, 400, { error: "username" });
+    if (!/^[a-z0-9._-]{2,32}$/.test(u) || u === "__proto__" || u === "constructor" || u === "prototype") return L.send(res, 400, { error: "username" });
     if (!L.ROLES.includes(role)) return L.send(res, 400, { error: "role" });
     if (p.length < 6 || p.length > 200) return L.send(res, 400, { error: "password" });
     await L.db.putAccount(u, { role, hash: await L.hashPassword(p) });
