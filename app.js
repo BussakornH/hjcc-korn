@@ -43,7 +43,7 @@ function ago(t) { const s = (Date.now() - t) / 1000; if (s < 45) return "just no
 
 /* charts.js / dnd.js are separate files; keep the page usable if one of them fails to load */
 const CH = window.HJCCCharts || { area: () => '<div class="chart-empty">Charts unavailable</div>', donut: () => "", spark: () => "", bind() {} };
-const dragging = () => !!(window.HJCCDnD && HJCCDnD.active && HJCCDnD.active());
+const dragging = () => !!(window.HJCCDnD && HJCCDnD.active && HJCCDnD.active()) || (mpPressed > 0 && Date.now() - mpPressed < 10000);   /* mpPressed: when a finger or button went down on the battle map; the 10 s cap means a lost pointer-up can never freeze the page */
 
 /* ---------- icons (24px line icons) ---------- */
 const IC = {
@@ -54,6 +54,7 @@ const IC = {
   sliders: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
   cog: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  pin: '<path d="M12 21s-7-5.2-7-11a7 7 0 0114 0c0 5.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
   map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
   pulse: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -865,13 +866,24 @@ function trayBody() {
     <div class="tray-go">${r ? `<div class="q">Estimated damage <b>${fx(r.main.dealt)}</b><br>${f1(r.main.pct)}% of their HP</div>` : `<div class="q">Add at least one unit on each side</div>`}<button class="btn primary" data-a="go" data-p="combat">${ico("swords")} Open calculator</button></div>
   </div>`;
 }
+function trayPut(u, w) {   /* sets the engagement up; the caller redraws */
+  const want = w === "att" ? u.side : other(u.side);
+  if (UI.attSide !== want) { UI.attSide = want; const a = UI.sel.att; UI.sel.att = UI.sel.def; UI.sel.def = a; const c = UI.cm.att; UI.cm.att = UI.cm.def; UI.cm.def = c; }
+  const o = w === "att" ? "def" : "att"; UI.sel[o] = UI.sel[o].filter(x => x !== u.id); if (!UI.sel[w].includes(u.id)) UI.sel[w].push(u.id);
+}
 function toTray(id, w) {
   const u = byId(id); if (!u) return;
   if (lost(u)) { toast(`${u.name} is destroyed`); return; }
-  const want = w === "att" ? u.side : other(u.side);
-  if (UI.attSide !== want) { UI.attSide = want; const a = UI.sel.att; UI.sel.att = UI.sel.def; UI.sel.def = a; const c = UI.cm.att; UI.cm.att = UI.cm.def; UI.cm.def = c; }
-  const o = w === "att" ? "def" : "att"; UI.sel[o] = UI.sel[o].filter(x => x !== id); if (!UI.sel[w].includes(id)) UI.sel[w].push(id);
-  saveUI(); render(); toast(`${u.name} added as ${w === "att" ? "attacker" : "defender"}`);
+  trayPut(u, w); saveUI(); render(); toast(`${u.name} added as ${w === "att" ? "attacker" : "defender"}`);
+}
+/* One click from a unit on the battle map to the combat calculator: the unit goes in (as the attacker, or the defender when the other side is already attacking) and the page switches
+   at once. No toast, no fade or slide: the .instant class switches every transition and animation off for the moment of the switch. */
+function toCalc(id) {
+  const u = byId(id); if (!u) return;
+  if (lost(u)) { toast(`${u.name} is destroyed`); return; }
+  trayPut(u, u.side === UI.attSide ? "att" : "def");
+  const r = document.documentElement; r.classList.add("instant"); go("combat");
+  requestAnimationFrame(() => requestAnimationFrame(() => r.classList.remove("instant")));
 }
 function moveUnit(id, front, ids) {
   const u = byId(id); if (!u) { render(); return; }
