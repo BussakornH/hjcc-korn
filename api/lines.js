@@ -40,7 +40,7 @@ module.exports = L.wrap(async (req, res) => {
     const nm = String(b.citySide.name || "").trim().slice(0, 40), sd = String(b.citySide.side || "");
     if (!nm || !["me", "foe", "n", "default"].includes(sd)) return L.send(res, 400, { error: "city" });
     const m = (await L.db.getKv("citysides:" + t)) || {};
-    if (sd === "default") delete m[nm]; else if (Object.keys(m).length < 400 || m[nm]) m[nm] = sd;
+    if (sd === "default") delete m[nm]; else if (nm !== "__proto__" && (Object.keys(m).length < 400 || Object.prototype.hasOwnProperty.call(m, nm))) m[nm] = sd;
     await L.db.setKv("citysides:" + t, m);
     return L.send(res, 200, { ok: true });
   }

@@ -25,7 +25,12 @@ function mpForcesPush() {
   mpFT = setTimeout(() => ["t1", "t2"].forEach(t => {
     const d = S.topics[t]; if (!d) return;
     const units = d.units.filter(u => u.side === "me" && !u.mirror && !u.remote).slice(0, 300).map(u => ({ id: u.id, name: u.name, code: u.tcode || "", cls: u.tname || "", branch: u.branch || "", hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), fr: u.front === "reserve" ? "reserve" : (u.front === "lost" || lost(u)) ? "lost" : "front" })), j = JSON.stringify(units);
-    if (mpFSent[t] === j) return; SentinelAuth.api("POST", "/api/forces", { topic: t, units }).then(r => { if (r.ok) mpFSent[t] = j; }).catch(() => {});
+    if (mpFSent[t] === j) return;
+    /* A brand-new device (new browser, private window, cleared site data) starts with no units. Pushing that empty list would wipe the copy
+       the chairs see. Only send an empty list from a device that has itself sent units for this topic before. */
+    const fk = "hjcc-fpush:" + KEY + ":" + t; let owns = false; try { owns = localStorage.getItem(fk) === "1"; } catch (e) {}
+    if (!units.length && !owns) return;
+    SentinelAuth.api("POST", "/api/forces", { topic: t, units }).then(r => { if (r.ok) { mpFSent[t] = j; if (units.length) { try { localStorage.setItem(fk, "1"); } catch (e) {} } } }).catch(() => {});
   }), 1200);
 }
 let mpFOk = false;

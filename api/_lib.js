@@ -8,7 +8,10 @@ const path = require("path");
 const ROLES = ["delegate", "chair", "admin"];
 const SESSION_TTL = 12 * 3600;
 const SCRYPT = { N: 1 << 15, r: 8, p: 1 };
-const LIMIT_WINDOW = 15 * 60, LIMIT_IP = 8, LIMIT_ACCT = 10;
+/* LIMIT_ACCT counts wrong passwords per account FROM ONE ADDRESS; LIMIT_ACCT_ALL is the ceiling across every address (brute-force cap).
+   Keeping them apart means strangers cannot lock an account out for its owner with a handful of bad guesses. */
+const LIMIT_WINDOW = 15 * 60, LIMIT_IP = 8, LIMIT_ACCT = 10, LIMIT_ACCT_ALL = 60;
+const MAX_BODY = 256 * 1024;
 const ON_VERCEL = !!process.env.VERCEL;
 const DATA_DIR = path.join(__dirname, "..", ".data");
 
@@ -44,7 +47,7 @@ function pg() {
 const WIN = LIMIT_WINDOW + " seconds";
 const pgDb = {
   async account(u) { const r = (await (await pg()).q("SELECT role, hash FROM sentinel_accounts WHERE u = $1", [u]))[0]; return r || null; },
-  async accounts() { const o = {}; (await (await pg()).q("SELECT u, role, hash FROM sentinel_accounts")).forEach((r) => (o[r.u] = { role: r.role, hash: r.hash })); return o; },
+  async accounts() { const o = Object.create(null); (await (await pg()).q("SELECT u, role, hash FROM sentinel_accounts")).forEach((r) => (o[r.u] = { role: r.role, hash: r.hash })); return o; },
   async putAccount(u, a) { await (await pg()).q("INSERT INTO sentinel_accounts (u, role, hash) VALUES ($1, $2, $3) ON CONFLICT (u) DO UPDATE SET role = $2, hash = $3", [u, a.role, a.hash]); },
   async delAccount(u) { const c = await pg(); await c.q("DELETE FROM sentinel_alloc2 WHERE u = $1", [u]); await c.q("DELETE FROM sentinel_seen WHERE u = $1", [u]); await c.q("DELETE FROM sentinel_accounts WHERE u = $1", [u]); },
   async beat(u, role, topic, page) { await (await pg()).q("INSERT INTO sentinel_seen (u, role, topic, pg, at) VALUES ($1, $2, $3, $4, now()) ON CONFLICT (u) DO UPDATE SET role = $2, topic = $3, pg = $4, at = now()", [u, role, topic, page]); },
@@ -70,7 +73,9 @@ const pgDb = {
     const c = await pg();
     if (!ch) { await c.q("DELETE FROM sentinel_alloc2 WHERE u = $1 AND topic = $2", [u, topic]); return true; }
     const t = (await c.q("SELECT u FROM sentinel_alloc2 WHERE cid = $1 AND NOT (u = $2 AND topic = $3)", [ch, u, topic]))[0]; if (t) return false;
-    await c.q("INSERT INTO sentinel_alloc2 (u, topic, cid) VALUES ($1, $2, $3) ON CONFLICT (u, topic) DO UPDATE SET cid = $3", [u, topic, ch]); return true;
+    try { await c.q("INSERT INTO sentinel_alloc2 (u, topic, cid) VALUES ($1, $2, $3) ON CONFLICT (u, topic) DO UPDATE SET cid = $3", [u, topic, ch]); }
+    catch (e) { if (e && e.code === "23505") return false; throw e; }   /* two requests raced for the same character: the loser gets "taken" */
+    return true;
   },
   async count(k) { const r = (await (await pg()).q("SELECT n FROM sentinel_rl WHERE k = $1 AND exp > now()", [k]))[0]; return r ? r.n : 0; },
   async fail(k) {
@@ -90,8 +95,8 @@ const FILE = path.join(DATA_DIR, "store.json");
 const fload = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch (e) { return { accounts: {}, rl: {} }; } };
 const fsave = (s) => { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(FILE, JSON.stringify(s)); };
 const fileDb = {
-  async account(u) { return fload().accounts[u] || null; },
-  async accounts() { return fload().accounts; },
+  async account(u) { const a = fload().accounts; return Object.prototype.hasOwnProperty.call(a, u) ? a[u] : null; },
+  async accounts() { return Object.assign(Object.create(null), fload().accounts); },
   async putAccount(u, a) { const s = fload(); s.accounts[u] = a; fsave(s); },
   async delAccount(u) { const s = fload(); delete s.accounts[u]; if (s.alloc2) delete s.alloc2[u]; if (s.seen) delete s.seen[u]; fsave(s); },
   async beat(u, role, topic, page) { const s = fload(); (s.seen = s.seen || {})[u] = { role, topic, page, at: Date.now() }; fsave(s); },
@@ -147,8 +152,11 @@ function secret() {
   }
 }
 const sign = (body) => crypto.createHmac("sha256", secret()).update(body).digest("base64url");
-function makeToken(u, role) {
-  const body = Buffer.from(JSON.stringify({ u, role, exp: Math.floor(Date.now() / 1000) + SESSION_TTL })).toString("base64url");
+/* A token is tied to the account's current password hash: resetting the password, or deleting and recreating the account
+   (new random salt), makes every earlier token stop working. */
+const fingerprint = (hash) => crypto.createHash("sha256").update(String(hash)).digest("base64url").slice(0, 16);
+function makeToken(u, role, hash) {
+  const body = Buffer.from(JSON.stringify({ u, role, f: fingerprint(hash), exp: Math.floor(Date.now() / 1000) + SESSION_TTL })).toString("base64url");
   return body + "." + sign(body);
 }
 /* verified session that still matches a live account, or null */
@@ -162,7 +170,7 @@ async function session(req) {
   let s; try { s = JSON.parse(Buffer.from(body, "base64url").toString("utf8")); } catch (e) { return null; }
   if (!s || s.exp < Date.now() / 1000) return null;
   const a = await db.account(s.u);
-  return a && a.role === s.role ? { u: s.u, role: a.role } : null;
+  return a && a.role === s.role && s.f === fingerprint(a.hash) ? { u: s.u, role: a.role } : null;
 }
 /* ---------- http ---------- */
 function send(res, status, obj, headers) {
@@ -172,11 +180,14 @@ function send(res, status, obj, headers) {
   for (const k in headers || {}) res.setHeader(k, headers[k]);
   res.end(JSON.stringify(obj));
 }
-async function readJson(req) {
+const tooBig = () => Object.assign(new Error("payload too large"), { status: 413 });
+async function readJson(req, max) {
+  max = max || MAX_BODY;
+  if (Number(req.headers["content-length"]) > max) throw tooBig();   /* also covers Vercel, which hands us req.body already parsed */
   if (req.body && typeof req.body === "object") return req.body;
-  if (typeof req.body === "string") { try { return JSON.parse(req.body); } catch (e) { return {}; } }
+  if (typeof req.body === "string") { if (req.body.length > max) throw tooBig(); try { return JSON.parse(req.body); } catch (e) { return {}; } }
   let n = 0; const chunks = [];
-  for await (const c of req) { n += c.length; if (n > 8192) return {}; chunks.push(c); }
+  for await (const c of req) { n += c.length; if (n > max) throw tooBig(); chunks.push(c); }
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch (e) { return {}; }
 }
 function sameOrigin(req) {
@@ -187,7 +198,10 @@ function clientIp(req) {
   return String(h["x-vercel-forwarded-for"] || h["x-real-ip"] || String(h["x-forwarded-for"] || "").split(",")[0] || (req.socket && req.socket.remoteAddress) || "?").trim();
 }
 const wrap = (fn) => async (req, res) => {
-  try { await fn(req, res); } catch (e) { console.error(e); send(res, 500, { error: "server" }); }
+  try { await fn(req, res); } catch (e) {
+    if (e && e.status === 413) return send(res, 413, { error: "too-large" });
+    console.error(e); send(res, 500, { error: "server" });
+  }
 };
 
-module.exports = { ROLES, LIMIT_IP, LIMIT_ACCT, db, hashPassword, verifyPassword, dummyHash, makeToken, session, send, readJson, sameOrigin, clientIp, wrap, SESSION_TTL };
+module.exports = { ROLES, LIMIT_IP, LIMIT_ACCT, LIMIT_ACCT_ALL, db, hashPassword, verifyPassword, dummyHash, makeToken, session, send, readJson, sameOrigin, clientIp, wrap, SESSION_TTL };
