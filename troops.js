@@ -56,11 +56,13 @@ function mpForcesLoad() {
         const ty = d.types.find(y => y.code === x.code), front = x.fr === "reserve" ? "reserve" : x.fr === "lost" ? "lost" : fr;
         let u = d.units.find(y => y.id === id);
         const nu = { side: g.side, name: x.name, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng, front, remote: g.user };
-        if (!u) { u = mkUnit(d, { side: g.side, t: ty, name: x.name, front, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng }); u.id = id; u.remote = g.user; d.units.push(u); changed = true; return; }
-        /* A unit with a marker on the map takes its HP (and so its "lost" front) from the marker, not from the delegate's copy: a battle the chair just applied is
-           not on that copy yet, and copying it back here would put the old HP on the unit, which mpTroopSync then sends to the server as if the chair had set it. */
-        const placed = (TR[t] || []).some(m => m.uid === id);
-        Object.keys(nu).forEach(k => { if (placed && (k === "hp" || k === "front")) return; if (u[k] !== nu[k]) { u[k] = nu[k]; changed = true; } });
+        if (!u) { u = mkUnit(d, { side: g.side, t: ty, name: x.name, front, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng }); u.id = id; u.remote = g.user; u.fsv = { hp: x.hp, fr: x.fr }; d.units.push(u); changed = true; return; }
+        /* HP and front: the chair may override them (a battle applied, an HP edit), so the delegate's copy only wins when the delegate changed it since this device last looked
+           (u.fsv is what it said then). Copying it back unconditionally put the old HP on the unit after every battle, and for a unit on the map mpTroopSync then sent that
+           old HP to the server as if the chair had set it. A unit with a marker takes HP from the marker instead (mpTroopSync), never from here. */
+        const placed = (TR[t] || []).some(m => m.uid === id), moved = !u.fsv || u.fsv.hp !== x.hp || u.fsv.fr !== x.fr;
+        Object.keys(nu).forEach(k => { if ((k === "hp" || k === "front") && (placed || !moved)) return; if (u[k] !== nu[k]) { u[k] = nu[k]; changed = true; } });
+        if (moved) { u.fsv = { hp: x.hp, fr: x.fr }; changed = true; }
       });
     });
     if (changed) { save(); if (!mpTDrag && !(typeof dragging === "function" && dragging())) render(); }
