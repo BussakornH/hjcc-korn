@@ -3,6 +3,8 @@
 Static site (`index.html` sign-in, `app.html` dashboard) plus serverless functions in `api/`.
 Passwords are verified on the server with scrypt. A successful sign-in returns a signed bearer token that each browser tab keeps in
 `sessionStorage` (it is **not** an HttpOnly cookie, so the site's CSP in `vercel.json` is what limits the damage of any future XSS).
+The CSP allows scripts only from the site's own files (`script-src 'self'`): keep every script in a `.js` file and every click handler in
+`data-a` / `addEventListener`, never an inline `<script>` block or an `onclick=` attribute, or the browser will refuse to run it.
 A token is tied to the account's current password hash, so resetting a password, or deleting and recreating the account, ends its
 sessions; it otherwise lasts 12 hours (there is no server-side logout list). Accounts, shared game state and sign-in rate limits live in
 a Neon Postgres database. Nothing secret ships to the browser.
@@ -16,7 +18,9 @@ a Neon Postgres database. Nothing secret ships to the browser.
    npm run account -- chair <password> chair
    npm run account -- delegate <password> delegate
    ```
-   Run the same command again to reset a password.
+   Run the same command again to reset a password. Passwords must be at least 10 characters; very common ones, a single repeated
+   character, or one containing the username are refused (here and on the admin's Accounts page). Existing accounts keep working until their
+   password is next changed.
 
 ## Local development
 `npm run dev` serves the site and the API on http://localhost:5173 using a file store in `.data/` (git-ignored, not deployed).
@@ -27,6 +31,10 @@ that edits shared state from two screens at once; without it the file store is t
 ## Limits
 Forty wrong passwords from one address (a whole room can share one wifi address, so this is generous), or ten against one account from one address, lock sign-in for that address for 15 minutes.
 Sixty wrong passwords against one account from all addresses combined lock that account for 15 minutes (a brute-force ceiling).
+Every attempt is counted before its password is checked and handed back if it was not a wrong guess, so sending guesses in parallel does
+not get more of them checked. Sign-ins still being checked count too, so if more than ten tabs sign in to one account from one address in
+the same instant a few are refused for a moment; the sign-in page tries once more after 1.5 seconds before it reports a lock.
+The last administrator can be neither removed nor given a lower access level.
 The war-game state itself (forces, log, rules) is still stored in each browser's localStorage, not in the database.
 
 ## Editing at the same time

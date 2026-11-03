@@ -32,10 +32,13 @@
     api: function (method, url, body) { return fetch(url, { method: method, headers: head(body ? { "Content-Type": "application/json" } : {}), body: body ? JSON.stringify(body) : undefined }); },
     /* async check for the sign-in page, so it never blocks painting */
     check: function (cb) { cb(me()); },
-    /* resolves "ok" | "role" | "bad" | "locked" (SentinelAuth.retry = seconds). The administrator form passes no username. */
-    signIn: function (u, p, role) {
+    /* resolves "ok" | "role" | "bad" | "locked" (SentinelAuth.retry = seconds). The administrator form passes no username.
+       Sign-ins still being checked count against the limit too, so when many people sign in to one account from one wifi at the same moment
+       a few can be refused; those are handed back within a second, so a refusal is tried once more before it is shown. */
+    signIn: function (u, p, role, again) {
       return fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ u: u, p: p, role: role }) })
         .then(function (r) {
+          if (r.status === 429 && !again) return new Promise(function (ok) { setTimeout(ok, 1500); }).then(function () { return window.SentinelAuth.signIn(u, p, role, true); });
           if (r.ok) return r.json().then(function (j) {
             try { sessionStorage.setItem(TK, j.token); sessionStorage.removeItem("sentinel-topic"); } catch (e) { return "bad"; }
             cached = undefined; return "ok";
