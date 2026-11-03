@@ -17,6 +17,13 @@ const mpTrFind = id => mpTroops().find(x => x.id === id);
 const mpFlat = s => String(s).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24);   /* what an older server kept of an id with colons in it */
 const mpAg = {}, MPF = ["name", "hp", "maxhp", "atk", "mov", "rng"];
 let mpTLoaded = false, TRMINE = {};
+/* What the server's list for each topic looked like when this device last loaded or saved it (TRB) and its version tag (TRVER).
+   A save sends the tag; if the list has changed since (a delegate's HP change, another chair), the server refuses with 409 and
+   the chair's edits are merged onto the new list (troops-merge.js) instead of overwriting it. */
+const TRVER = { t1: "0", t2: "0" }, TRB = { t1: [], t2: [] }, mpClone = v => JSON.parse(JSON.stringify(v));
+function mpTrAdopt(j) {
+  ["t1", "t2"].forEach(t => { TR[t] = j[t] || []; TRVER[t] = (j.ver && j.ver[t]) || "0"; TRB[t] = mpClone(TR[t]); });
+}
 /* ---------- every side's forces, for the chairs ----------
    A delegate's own units are copied to the server whenever they change; a chair's copy of them is rebuilt from there (read only, marked "remote"). */
 let mpFSent = {}, mpFT = 0;
@@ -86,7 +93,7 @@ function mpTroopsLoad() {
   mpTLoaded = true; const fp = mpForcesLoad();
   return SentinelAuth.api("GET", "/api/troops").then(r => r.ok ? r.json() : null).then(j => {
     if (!j) return; mpEpoch(j.epoch);
-    if (mpTPend || mpTDrag) return; TR = { t1: j.t1 || [], t2: j.t2 || [] }; TRMINE = j.mine || {};
+    if (mpTPend || mpTDrag) return; mpTrAdopt(j); TRMINE = j.mine || {};
     if (mpTroopSync() && typeof UI !== "undefined" && UI.page !== "map") render();   /* the forces list changed under you */
     fp.then(mpChairRepair);
   }, () => {});
@@ -123,9 +130,29 @@ function mpTroopSync() {
   Object.keys(patch).forEach(t => SentinelAuth.api("POST", "/api/troops", { topic: t, hp: Object.keys(patch[t]).map(id => ({ id, hp: patch[t][id] })) }).catch(() => {}));
   return local;
 }
-function mpTroopSave() {
-  clearTimeout(mpTSaveT); const t = S.topic;
-  mpTPend++; mpTSaveT = setTimeout(() => SentinelAuth.api("POST", "/api/troops", { topic: t, troops: TR[t] || [] }).then(r => { if (!r.ok) throw new Error("troops"); mpTPend = 0; }).catch(() => { mpTPend = 0; toast("Could not save the troops, try again"); mpTroopsLoad(); }), 250);
+/* Saves are batched for a quarter second. Each one carries the version tag it is based on; on 409 ("stale") the chair's edits are merged
+   onto the list the server sent back and the save is tried again, a few times at most. */
+const mpTDirty = new Set(); let mpTBusy = false;
+function mpTroopSave() { mpTDirty.add(S.topic); mpTPend = 1; clearTimeout(mpTSaveT); mpTSaveT = setTimeout(mpTroopFlush, 250); }
+async function mpTroopFlush() {
+  mpTSaveT = 0;
+  if (mpTBusy) { mpTSaveT = setTimeout(mpTroopFlush, 250); return; }
+  mpTBusy = true; let merged = false;
+  try {
+    for (const t of Array.from(mpTDirty)) {
+      mpTDirty.delete(t);
+      for (let n = 0; ; n++) {
+        const r = await SentinelAuth.api("POST", "/api/troops", { topic: t, troops: TR[t] || [], base: TRVER[t] || "0" }), j = await r.json().catch(() => null);
+        if (r.ok && j && j.ver) { TRVER[t] = j.ver; TRB[t] = mpClone(j.troops || []); break; }
+        if (r.status === 409 && j && j.error === "stale" && Array.isArray(j.troops) && n < 4) {
+          TR[t] = mpMergeTroops(TRB[t], TR[t] || [], j.troops); TRVER[t] = j.ver; TRB[t] = mpClone(j.troops); merged = true; continue;
+        }
+        throw new Error("troops");
+      }
+    }
+  } catch (e) { mpTDirty.clear(); mpTBusy = false; mpTPend = 0; toast("Could not save the troops, try again"); mpTroopsLoad(); return; }
+  mpTBusy = false; mpTPend = mpTDirty.size || mpTSaveT ? 1 : 0;
+  if (merged) { mpTroopSync(); mpRG = null; if (!mpTDrag) render(); }   /* someone else's change came in: show it and carry it into this chair's own units */
 }
 
 /* ---------- the markers ---------- */

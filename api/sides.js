@@ -31,14 +31,18 @@ module.exports = L.wrap(async (req, res) => {
   if (req.method !== "POST") return L.send(res, 405, { error: "method" });
   const b = await L.readJson(req), t = String(b.topic || "");
   if (!TOPIC.includes(t)) return L.send(res, 400, { error: "topic" });
-  const st = await load(t);
-  if (b.addDay) { const last = st.days[st.days.length - 1]; if (st.days.length >= 30) return L.send(res, 400, { error: "days" }); st.days.push({ n: last.n + 1, sides: Object.assign({}, last.sides) }); }
-  else if (b.dropDay) { if (st.days.length < 2) return L.send(res, 400, { error: "last-day" }); st.days.pop(); }
-  else {
-    const day = st.days.find((x) => x.n === Number(b.day)), id = String(b.id || "");
-    if (!day || !CHARS.some((c) => c.id === id && c.topic === t) || !SIDES.includes(b.side)) return L.send(res, 400, { error: "move" });
-    day.sides[id] = b.side;
-  }
-  await L.db.setKv("days:" + t, st);
+  let err = null;   /* the change runs on the freshest stored state, so two chairs moving different characters at once both land */
+  const st = await L.updateKv("days:" + t, (cur) => {
+    err = null; const st = cur || fresh(t);
+    if (b.addDay) { const last = st.days[st.days.length - 1]; if (st.days.length >= 30) { err = "days"; return undefined; } st.days.push({ n: last.n + 1, sides: Object.assign({}, last.sides) }); }
+    else if (b.dropDay) { if (st.days.length < 2) { err = "last-day"; return undefined; } st.days.pop(); }
+    else {
+      const day = st.days.find((x) => x.n === Number(b.day)), id = String(b.id || "");
+      if (!day || !CHARS.some((c) => c.id === id && c.topic === t) || !SIDES.includes(b.side)) { err = "move"; return undefined; }
+      day.sides[id] = b.side;
+    }
+    return st;
+  });
+  if (err) return L.send(res, 400, { error: err });
   L.send(res, 200, st);
 });

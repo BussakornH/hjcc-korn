@@ -21,8 +21,17 @@ a Neon Postgres database. Nothing secret ships to the browser.
 ## Local development
 `npm run dev` serves the site and the API on http://localhost:5173 using a file store in `.data/` (git-ignored, not deployed).
 Seed local accounts with the same `npm run account` command when no `.env.local` is present.
+`DEV_DB_LATENCY=15 npm run dev` delays every local database call by up to 15 ms, like a network database does. Use it when testing anything
+that edits shared state from two screens at once; without it the file store is too fast to show a race.
 
 ## Limits
 Forty wrong passwords from one address (a whole room can share one wifi address, so this is generous), or ten against one account from one address, lock sign-in for that address for 15 minutes.
 Sixty wrong passwords against one account from all addresses combined lock that account for 15 minutes (a brute-force ceiling).
 The war-game state itself (forces, log, rules) is still stored in each browser's localStorage, not in the database.
+
+## Editing at the same time
+Shared state (troops on the map, sides by day, city sides) is written so that two people editing at once do not erase each other.
+A delegate's HP change and a chair's save are applied on top of each other; two chairs saving the troop list from the same starting point
+get a "stale" answer for the second one, and its page merges its own edits onto the newer list and saves again (`troops-merge.js`).
+Where the same field of the same troop was changed by both, the chair's value wins. Battle lines are still saved as a whole list,
+so two chairs redrawing lines at the same moment can still overwrite each other.

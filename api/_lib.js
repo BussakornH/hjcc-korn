@@ -67,6 +67,13 @@ const pgDb = {
     return { kind: "postgres", size: size && size.size, conn, st, version: ver && ver.v, up: ver && ver.up, tables };
   },
   async getKv(k) { const r = (await (await pg()).q("SELECT v FROM sentinel_kv WHERE k = $1", [k]))[0]; return r ? JSON.parse(r.v) : null; },
+  /* the stored text exactly as written, or null when the key does not exist. casKv writes only if the text is still what the caller read. */
+  async getKvRaw(k) { const r = (await (await pg()).q("SELECT v FROM sentinel_kv WHERE k = $1", [k]))[0]; return r ? r.v : null; },
+  async casKv(k, oldRaw, v) {
+    const c = await pg(), nv = JSON.stringify(v);
+    if (oldRaw == null) return (await c.q("INSERT INTO sentinel_kv (k, v) VALUES ($1, $2) ON CONFLICT (k) DO NOTHING RETURNING k", [k, nv])).length > 0;
+    return (await c.q("UPDATE sentinel_kv SET v = $3 WHERE k = $1 AND v = $2 RETURNING k", [k, oldRaw, nv])).length > 0;
+  },
   async setKv(k, v) { await (await pg()).q("INSERT INTO sentinel_kv (k, v) VALUES ($1, $2) ON CONFLICT (k) DO UPDATE SET v = $2", [k, JSON.stringify(v)]); },
   /* { username: { t1: charId, t2: charId } }: one character per topic per account */
   async allocs() { const o = {}; (await (await pg()).q("SELECT u, topic, cid FROM sentinel_alloc2")).forEach((r) => ((o[r.u] = o[r.u] || {})[r.topic] = r.cid)); return o; },
@@ -105,6 +112,12 @@ const fileDb = {
   async seen(sec) { const s = fload().seen || {}; return Object.keys(s).map((u) => ({ u, role: s[u].role, topic: s[u].topic, page: s[u].page, ago: Math.round((Date.now() - s[u].at) / 1000) })).filter((x) => x.ago <= sec).sort((a, b) => a.ago - b.ago); },
   async stats() { const s = fload(); let size = 0; try { size = fs.statSync(FILE).size; } catch (e) { /* no file yet */ } return { kind: "file", size, tables: [["accounts", Object.keys(s.accounts || {}).length], ["settings", Object.keys(s.kv || {}).length], ["allocations", Object.keys(s.alloc2 || {}).length]].map(([name, rows]) => ({ name, rows, size: null })) }; },
   async getKv(k) { return (fload().kv || {})[k] || null; },
+  async getKvRaw(k) { const kv = fload().kv || {}; return Object.prototype.hasOwnProperty.call(kv, k) ? JSON.stringify(kv[k]) : null; },
+  async casKv(k, oldRaw, v) {
+    const s = fload(), kv = s.kv || {}, cur = Object.prototype.hasOwnProperty.call(kv, k) ? JSON.stringify(kv[k]) : null;
+    if (cur !== oldRaw) return false;
+    (s.kv = kv)[k] = v; fsave(s); return true;
+  },
   async setKv(k, v) { const s = fload(); (s.kv = s.kv || {})[k] = v; fsave(s); },
   async allocs() { const a = fload().alloc2 || {}, o = {}; Object.keys(a).forEach((u) => (o[u] = Object.assign({}, a[u]))); return o; },
   async setAlloc(u, topic, ch) {
@@ -121,10 +134,14 @@ const fileDb = {
   async removeLine(id, by) { const s = fload(); (s.removed = s.removed || {})[id] = { by, at: Date.now() }; fsave(s); },
   async restoreLines(prefix) { const s = fload(); Object.keys(s.removed || {}).forEach((id) => { if (id.indexOf(prefix) === 0) delete s.removed[id]; }); fsave(s); }
 };
+/* Dev only: DEV_DB_LATENCY=15 delays every file-store call by up to 15 ms either side, so a read-then-write has a gap in it like it does on
+   a network database. Without it the file store is too fast to show the races the Postgres store has. */
+const LAG = +process.env.DEV_DB_LATENCY || 0, nap = () => new Promise((r) => setTimeout(r, Math.random() * LAG));
+const lagged = (f) => (LAG && typeof f === "function" ? async (...a) => { await nap(); const out = await f(...a); await nap(); return out; } : f);
 const db = new Proxy({}, {
   get(_, name) {
     if (process.env.DATABASE_URL) return pgDb[name];
-    if (!ON_VERCEL) return fileDb[name];
+    if (!ON_VERCEL) return lagged(fileDb[name]);
     return () => { throw new Error("database is not configured (connect a Neon database to this Vercel project)"); };
   }
 });
@@ -182,7 +199,20 @@ function send(res, status, obj, headers) {
   for (const k in headers || {}) res.setHeader(k, headers[k]);
   res.end(JSON.stringify(obj));
 }
-const tooBig = () => Object.assign(new Error("payload too large"), { status: 413 });
+/* A short tag that changes whenever the stored text for a key changes ("0" while it does not exist). Clients send back the tag they last saw. */
+const verOf = (raw) => (raw == null ? "0" : crypto.createHash("sha1").update(raw).digest("base64url").slice(0, 12));
+/* Read-modify-write that cannot lose another request's change: fn(current) returns the new value, or undefined to leave it alone.
+   If someone else wrote in between, the write is refused and fn runs again on what they wrote. */
+async function updateKv(k, fn, tries) {
+  for (let i = 0; i < (tries || 15); i++) {
+    const raw = await db.getKvRaw(k), cur = raw == null ? null : JSON.parse(raw), next = await fn(cur);
+    if (next === undefined) return cur;
+    if (await db.casKv(k, raw, next)) return next;
+    await new Promise((r) => setTimeout(r, Math.random() * 6 * (i + 1)));   /* lost the race: wait a random moment so the losers do not all collide again */
+  }
+  throw Object.assign(new Error("busy"), { status: 503, error: "busy" });
+}
+const tooBig = () => Object.assign(new Error("payload too large"), { status: 413, error: "too-large" });
 async function readJson(req, max) {
   max = max || MAX_BODY;
   if (Number(req.headers["content-length"]) > max) throw tooBig();   /* also covers Vercel, which hands us req.body already parsed */
@@ -201,9 +231,9 @@ function clientIp(req) {
 }
 const wrap = (fn) => async (req, res) => {
   try { await fn(req, res); } catch (e) {
-    if (e && e.status === 413) return send(res, 413, { error: "too-large" });
+    if (e && e.status) return send(res, e.status, { error: e.error || "server" });
     console.error(e); send(res, 500, { error: "server" });
   }
 };
 
-module.exports = { ROLES, LIMIT_IP, LIMIT_ACCT, LIMIT_ACCT_ALL, db, hashPassword, verifyPassword, dummyHash, makeToken, session, send, readJson, sameOrigin, clientIp, wrap, SESSION_TTL };
+module.exports = { ROLES, LIMIT_IP, LIMIT_ACCT, LIMIT_ACCT_ALL, db, hashPassword, verifyPassword, dummyHash, makeToken, session, send, readJson, sameOrigin, clientIp, wrap, SESSION_TTL, verOf, updateKv };
