@@ -53,7 +53,7 @@ module.exports = L.wrap(async (req, res) => {
     if (!nm || !["me", "foe", "n", "default"].includes(sd)) return L.send(res, 400, { error: "city" });
     await L.updateKv("citysides:" + t, (cur) => {   /* atomic: two chairs giving different cities to a side at once both land */
       const m = cur || {};
-      if (sd === "default") delete m[nm]; else if (nm !== "__proto__" && (Object.keys(m).length < 400 || Object.prototype.hasOwnProperty.call(m, nm))) m[nm] = sd;
+      if (sd === "default") delete m[nm]; else if (!["__proto__", "constructor", "prototype"].includes(nm) && (Object.keys(m).length < 400 || Object.prototype.hasOwnProperty.call(m, nm))) m[nm] = sd;
       return m;
     });
     return L.send(res, 200, { ok: true });

@@ -99,7 +99,7 @@ const pgDb = {
   async clear(k) { await (await pg()).q("DELETE FROM sentinel_rl WHERE k = $1", [k]); },
   async removedLines() { return (await (await pg()).q("SELECT id FROM sentinel_removed")).map((r) => r.id); },
   async removeLine(id, by) { await (await pg()).q("INSERT INTO sentinel_removed (id, removed_by) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", [id, by]); },
-  async restoreLines(prefix) { await (await pg()).q("DELETE FROM sentinel_removed WHERE id LIKE $1", [prefix + "%"]); }
+  async restoreLines(prefix) { await (await pg()).q("DELETE FROM sentinel_removed WHERE id LIKE $1", [String(prefix).replace(/[\\%_]/g, "\\$&") + "%"]); }
 };
 const FILE = path.join(DATA_DIR, "store.json");
 const fload = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch (e) { return { accounts: {}, rl: {} }; } };
