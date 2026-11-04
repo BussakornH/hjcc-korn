@@ -203,8 +203,8 @@ function mpLinesSvg(t) {
 function mpAsk(title, text, label, cb) { UI.askCb = cb; openModal(`<h2>${esc(title)}</h2><p class="muted" style="margin-top:10px">${esc(text)}</p><div class="m-act"><button class="btn" data-a="modalClose">Cancel</button><button class="btn danger" data-a="mapYes">${esc(label)}</button></div>`); }
 /* laying down or taking back a point only redraws the line and the counter, not the whole page (that flashed) */
 function mpDraftUi() {
-  mpRedrawLines(); const p = document.querySelector(".mp-act [data-a=mapFinish]"); if (!p) return;
-  p.disabled = mpDraft.length < 2; document.querySelector(".mp-act [data-a=mapUndoPt]").disabled = !mpDraft.length; const b = p.closest(".mp-card").querySelector(".kv b"); if (b) b.textContent = mpDraft.length;
+  mpRedrawLines(); const p = document.querySelector(".mp-bar [data-a=mapFinish]"); if (!p) return;
+  p.disabled = mpDraft.length < 2; document.querySelector(".mp-bar [data-a=mapUndoPt]").disabled = !mpDraft.length; const b = p.closest(".mp-card").querySelector(".mp-n"); if (b) b.textContent = plural(mpDraft.length, "point");
 }
 /* a redraw of the map page keeps the live map (borders, relief, terrain) and swaps only the layers that change: rebuilding the picture made the whole map flash */
 function mpKeepMap(old, html) {
