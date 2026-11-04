@@ -321,6 +321,23 @@ function spread(list, h, dmg, mode) {
 const ARTY = ["ART"];
 const isArty = u => !!u && ARTY.includes(u.tcode);
 const noHit = x => ({ ...x, dealt: 0, dmg: 0, pct: 0, self: 0, row: null });
+/* weak / fortified points (placed by the chairs on the battle map): a unit whose map marker stands inside a circle takes ZONE_WEAK more damage in a weak one and ZONE_FORT less in a fortified one.
+   It only applies to a unit that actually took damage, never below 0 or above the HP it had, and a unit inside one of each nets +2 - 5. Units not placed on the map are never in a circle. */
+const ZONE_WEAK = 2, ZONE_FORT = 5;
+function zoneNet(u) {
+  const pts = (typeof PTS !== "undefined" && PTS[S.topic]) || [], m = (typeof TR !== "undefined" && TR[S.topic] || []).find(x => x.uid === u.id);
+  if (!m || !pts.length) return 0;
+  const inside = k => pts.some(q => q.kind === k && mpKm(m.lat, m.lon, q.lat, q.lon) <= q.r);
+  return (inside("weak") ? ZONE_WEAK : 0) - (inside("fort") ? ZONE_FORT : 0);
+}
+/* h0: HP before this step, h: HP after it; moves every damaged unit's HP by its zone net and notes it in fx */
+function zoneAdjust(units, h0, h, fx) {
+  units.forEach(u => {
+    const a = h0.get(u.id), b = h.get(u.id), lostHp = a - b; if (!(lostHp > 1e-9)) return;
+    const net = zoneNet(u); if (!net) return;
+    const to = Math.min(a, Math.max(0, lostHp + net)); h.set(u.id, a - to); fx.set(u.id, (fx.get(u.id) || 0) + (to - lostHp));
+  });
+}
 /* the whole engagement, worked out on copies: nothing changes until commitBattle() */
 function resolve(attIds, defIds, o) {
   const d = D(), R = d.rules, get = o.get || (id => d.units.find(u => u.id === id));
@@ -333,7 +350,8 @@ function resolve(attIds, defIds, o) {
   let main = strike(A.filter(u => !bA.includes(u)), dB, o.am, o.mult, o.bonus, R);
   if (!dB.length) main = noHit(main);
   const hA = new Map(A.map(u => [u.id, num(u.hp)])), hB = new Map(B.map(u => [u.id, num(u.hp)]));
-  const over = dB.length ? spread(dB, hB, main.dealt, R.spread) : 0;
+  const zfx = new Map(), hB0 = new Map(hB), over = dB.length ? spread(dB, hB, main.dealt, R.spread) : 0;
+  zoneAdjust(dB, hB0, hB, zfx);
   if (main.self > 0) dA.forEach(u => hA.set(u.id, Math.max(0, hA.get(u.id) - num(u.hp) * main.self / 100)));
   /* counter-attack: every defender still standing after the hit strikes back at full strength, even one with a sliver of HP left (and even if it took no damage); one reduced to 0 does not */
   const stand = B.filter(u => !bB.includes(u) && hB.get(u.id) > 1e-9);
@@ -341,10 +359,12 @@ function resolve(attIds, defIds, o) {
   if (counter && !stand.length) counter = { ...noHit(counter), none: true };
   else if (counter && !dA.length) counter = { ...noHit(counter), safe: true };
   let overC = 0;
-  if (counter && dA.length) { overC = spread(dA, hA, counter.dealt, R.spread); if (counter.self > 0) dB.forEach(u => hB.set(u.id, Math.max(0, hB.get(u.id) - num(u.hp) * counter.self / 100))); }
+  if (counter && dA.length) { overC = spread(dA, hA, counter.dealt, R.spread); if (counter.self > 0) { const b1 = new Map(hB); dB.forEach(u => hB.set(u.id, Math.max(0, hB.get(u.id) - num(u.hp) * counter.self / 100))); zoneAdjust(dB, b1, hB, zfx); } }
+  zoneAdjust(dA, new Map(A.map(u => [u.id, num(u.hp)])), hA, zfx);
   [hA, hB].forEach(h => h.forEach((v, k) => h.set(k, Math.max(0, r2(v)))));
-  return { A, B, main, counter, hA, hB, over, overC, safe, noShip: [...bA, ...bB] };
+  return { A, B, main, counter, hA, hB, over, overC, safe, zfx, noShip: [...bA, ...bB] };
 }
+const zoneNote = (r, u) => { const z = r.zfx && r.zfx.get(u.id); return z ? ` (${z > 0 ? "weak point" : "fortified point"}: ${z > 0 ? "+" : "−"}${fx(Math.abs(z))} damage)` : ""; };
 const grpNames = L => L.length === 1 ? L[0].name : `${L[0].name} +${L.length - 1}`;
 function battleMsg(r) {
   const kd = r.B.filter(u => !(r.hB.get(u.id) > 0)).length, ka = r.A.filter(u => !(r.hA.get(u.id) > 0)).length;
@@ -564,7 +584,7 @@ function render() {
   CH.bind($("page"));
   if (fid) { const e = $(fid); if (e && e !== document.activeElement) { e.focus({ preventScroll: true }); if (ss && e.setSelectionRange) try { e.setSelectionRange(ss[0], ss[1]); } catch (x) { /* ignore */ } } }
   renderSave();
-  if (ROLE !== "admin" && typeof mpTroopsLoad === "function") { if (!mpTLoaded) mpTroopsLoad(); else mpTroopSync(); if (ROLE === "delegate") mpForcesPush(); }   /* the chairs' units and the troops on the map stay one thing */
+  if (ROLE !== "admin" && typeof mpTroopsLoad === "function") { if (!mpTLoaded) mpTroopsLoad(); else mpTroopSync(); if (ROLE === "delegate") mpForcesPush(); if (typeof mpPointsLoad === "function" && Date.now() - mpPtAt > 15000) mpPointsLoad(); }   /* the chairs' units and the troops on the map stay one thing */
 }
 /* the top bar names the account that is signed in: its role, then its username when that adds something */
 function acctLbl() {
@@ -997,7 +1017,7 @@ function steps(r) {
   li.push(`<li><h4>${n++} · Effective attack</h4><ul>${M.parts.map(x => `<li>${line(x)}</li>`).join("")}</ul><p>Together: <b>${fx(M.V.atk)}</b>${!R.useStr && !R.useMod ? " (no strength rules switched on)" : ""}</p></li>`);
   li.push(`<li><h4>${n++} · Damage formula</h4><p><code>${esc(M.ferr ? STD_EXPR : R.expr)}</code> with ${vs(M.V)} = <b>${fx(M.raw)}</b>${R.rounding !== "none" ? `, ${RND[R.rounding]}: <b>${fx(M.dmg)}</b>` : ""}${R.useMorale ? "" : " (morale is off, so it counts as 100%)"}</p></li>`);
   if (R.useChart && M.row) li.push(`<li><h4>${n++} · Results chart</h4><p>${fx(M.dmg)} damage is ${f1(M.pct)}% of the defenders' ${fx(M.V.hp)} HP → row <b>${esc(rowLabel(R, M.row))}</b>: the defenders take ${fx(M.row.tDmg)}% of it (<b>${fx(M.dealt)}</b>)${num(M.row.aLoss) > 0 ? `, the attackers lose ${fx(M.row.aLoss)}% of their HP` : ""}${M.row.note ? ` · ${esc(M.row.note)}` : ""}</p></li>`);
-  li.push(`<li><h4>${n++} · Spread over the defenders (${SPREAD[R.spread]})</h4><ul>${r.B.map(u => `<li>${esc(u.name)}: ${fx(u.hp)} → <b>${fx(r.hB.get(u.id))}</b>${r.safe.has(u.id) ? " (artillery only hits, so it takes no damage)" : ""}</li>`).join("")}</ul>${r.over > 0 ? `<p>${fx(r.over)} damage left over (overkill).</p>` : ""}</li>`);
+  li.push(`<li><h4>${n++} · Spread over the defenders (${SPREAD[R.spread]})</h4><ul>${r.B.map(u => `<li>${esc(u.name)}: ${fx(u.hp)} → <b>${fx(r.hB.get(u.id))}</b>${r.safe.has(u.id) ? " (artillery only hits, so it takes no damage)" : ""}${zoneNote(r, u)}</li>`).join("")}</ul>${r.over > 0 ? `<p>${fx(r.over)} damage left over (overkill).</p>` : ""}</li>`);
   if (r.counter && r.counter.safe) li.push(`<li><h4>${n++} · Counter-attack</h4><p>No damage: every attacker is artillery set to “only hits”.</p></li>`);
   else if (r.counter && r.counter.none) li.push(`<li><h4>${n++} · Counter-attack</h4><p>No counter-attack: every defender was destroyed by the hit.</p></li>`);
   else if (r.counter) li.push(`<li><h4>${n++} · Counter-attack</h4><p>The defenders still standing strike back at full strength, however little HP they have left: effective attack ${fx(r.counter.V.atk)}${R.useMorale ? `, morale ${fx(r.counter.V.morale)}%` : ""} → <b>${fx(r.counter.dealt)}</b> damage over the attackers (no multiplier or bonus).</p><ul>${r.A.map(u => `<li>${esc(u.name)}: ${fx(u.hp)} → <b>${fx(r.hA.get(u.id))}</b>${r.safe.has(u.id) ? " (artillery only hits, so it takes no damage)" : ""}</li>`).join("")}</ul></li>`);

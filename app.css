@@ -888,3 +888,13 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 @media (prefers-reduced-motion: reduce) { .trp-ping { animation: none; opacity: .9; transform: scale(1.5); } .trp-ping.b { display: none; } }
 /* a page switch the person asked for in one click happens at once: nothing slides, fades or counts down */
 .instant *, .instant *::before, .instant *::after { transition: none !important; animation: none !important; }
+
+/* weak / fortified points: a translucent circle with an icon at the centre */
+.pt-c { pointer-events: none; stroke-width: 2; stroke-dasharray: 8 6; vector-effect: non-scaling-stroke; }
+.pt-weak .pt-c { fill: rgba(255, 90, 70, .16); stroke: #ff5a46; } .pt-fort .pt-c { fill: rgba(70, 190, 120, .16); stroke: #3fbf78; }
+.pt.on .pt-c { stroke-dasharray: none; stroke-width: 3; }
+.pt-i { cursor: pointer; transform: scale(calc(var(--k, 1) * .95)); } .pt-hit { fill: transparent; pointer-events: all; }
+.pt-sh { stroke: #fff; stroke-width: 1.6; stroke-linejoin: round; } .pt-weak .pt-sh { fill: #d9402f; } .pt-fort .pt-sh { fill: #2e9d60; }
+.pt-cr { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; } .pt-door { fill: #fff; }
+.pt-n { text-anchor: middle; font-size: 11px; font-weight: 700; fill: #fff; paint-order: stroke; stroke: rgba(0, 0, 0, .7); stroke-width: 3px; pointer-events: none; }
+.k-pt { width: 10px; height: 10px; border-radius: 50%; border: 2px dashed; } .k-pt.weak { border-color: #ff5a46; background: rgba(255, 90, 70, .3); } .k-pt.fort { border-color: #3fbf78; background: rgba(70, 190, 120, .3); }

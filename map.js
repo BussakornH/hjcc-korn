@@ -8,7 +8,7 @@ const MPCFG = {
   t2: { lon: [-11, 48], lat: [30, 63.5], url: "borders-1914.json", rename: { "United Kingdom of Great Britain and Ireland": "United Kingdom" },
     side: { "France": "L", "United Kingdom of Great Britain and Ireland": "L", "Russian Empire": "L", "Kingdom of Italy": "L", "Belgium": "L", "Serbia": "L", "Romania": "L", "Greece": "L", "German Empire": "R", "Austro-Hungarian Empire": "R", "Ottoman Empire": "R", "Bulgaria": "R" } }
 };
-let mpTerrOpen = false, mpDEM = {}, MPREL = {}, mpTD = null, mpTerr = true, mpCity = null, MPLAND = null, MPB = {}, LN = null, MPBASE = {}, MPV = null, MPT = null, mpTool = "edit", mpSel = null, mpVx = null, mpDraft = [], mpLoad = 0, mpDragged = false, mpDrag = null, mpPressed = 0, mpFly = 0;
+let mpTerrOpen = false, mpDEM = {}, MPREL = {}, mpTD = null, mpTerr = true, mpCity = null, MPLAND = null, MPB = {}, LN = null, MPBASE = {}, MPV = null, MPT = null, mpTool = "edit", mpSel = null, mpVx = null, mpDraft = [], mpLoad = 0, mpDragged = false, mpDrag = null, mpPressed = 0, mpFly = 0, mpPt = null, mpPtNew = null, PTS = { t1: [], t2: [] }, mpPtAt = 0;
 
 /* every map is 1000 units wide, so text and points look the same size on both topics; sc is units per degree of latitude */
 const mpGeo = t => { const c = MPCFG[t], k = Math.cos(((c.lat[0] + c.lat[1]) / 2) * Math.PI / 180), sc = 1000 / ((c.lon[1] - c.lon[0]) * k); return { c, k, sc, lon0: c.lon[0], top: c.lat[1], W: 1000, H: (c.lat[1] - c.lat[0]) * sc }; };
@@ -29,11 +29,33 @@ function mpLoadData(quiet) {
   const gen = mpTGen, trp = SentinelAuth.api("GET", "/api/troops").then(r => r.ok ? r.json() : null).then(j => { if (j && !mpTPend && !mpTDrag && gen === mpTGen) { mpTrAdopt(j); TRMINE = j.mine || {}; mpTroopSync(); } }, () => {});
   const lines = SentinelAuth.api("GET", "/api/lines").then(r => r.ok ? r.json() : Promise.reject());
   return Promise.all([need, bor, lines, terr, dem, trp]).then(a => {
-    LN = a[2]; mpLoad = 2;
+    LN = a[2]; mpLoad = 2; mpPtAdopt(a[2]);
     if (mpSel && !LN[t].some(l => l.id === mpSel)) { mpSel = null; mpVx = null; }
     if (UI.page === "map" && !(quiet && (mpDrag || mpDraft.length || document.querySelector("#page :focus")))) render();
   }, () => { mpLoad = -1; if (UI.page === "map") render(); });
 }
+/* weak / fortified points: a circle on the map. Units whose marker stands inside one take +2 (weak) or -5 (fortified) damage, see zoneNet() in app.js */
+const PT_KM = 111.32, PT_ICON = { weak: "Weak point", fort: "Fortified point" };
+function mpPtAdopt(j) { if (j && j.points) PTS = { t1: j.points.t1 || [], t2: j.points.t2 || [] }; mpPtAt = Date.now(); }
+/* the combat calculator needs the points even when the map was never opened */
+function mpPointsLoad() { mpPtAt = Date.now(); return SentinelAuth.api("GET", "/api/lines").then(r => r.ok ? r.json() : null).then(j => { if (j && !mpPtDirty) { const o = JSON.stringify(PTS); mpPtAdopt(j); if (o !== JSON.stringify(PTS) && UI.page !== "map") render(); } }, () => {}); }
+let mpPtDirty = 0;
+function mpPtSave() {
+  mpPtDirty = 1; return SentinelAuth.api("POST", "/api/lines", { topic: S.topic, points: PTS[S.topic] }).then(r => { if (!r.ok) throw new Error("save"); mpPtDirty = 0; }).catch(() => { mpPtDirty = 0; toast("Could not save the points, try again"); mpLoadData(); });
+}
+const mpKm = (a, b, c, d) => { const R = 6371, q = Math.PI / 180, x = Math.sin((c - a) * q / 2) ** 2 + Math.cos(a * q) * Math.cos(c * q) * Math.sin((d - b) * q / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); };
+function mpPointsSvg(t) {
+  const g = mpGeo(t); let o = "";
+  (PTS[t] || []).forEach(q => {
+    const p = mpXY(g, q.lat, q.lon), r = q.r / PT_KM * g.sc, on = q.id === mpPt, ed = ROLE !== "delegate";
+    const glyph = q.kind === "weak"
+      ? `<path d="M-13 -15H13V3C13 11 6 16 0 19C-6 16 -13 11 -13 3Z" class="pt-sh"/><path d="M2 -12L-4 -1L3 1L-3 14" class="pt-cr"/>`
+      : `<path d="M-14 15V-6H-9V-11H-4V-6H4V-11H9V-6H14V15Z" class="pt-sh"/><path d="M-4 15V5A4 4 0 0 1 4 5V15Z" class="pt-door"/>`;
+    o += `<g class="pt pt-${q.kind}${on ? " on" : ""}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><circle class="pt-c" r="${r.toFixed(1)}"/><g class="pt-i" data-a="mapPt" data-id="${esc(q.id)}"><circle class="pt-hit" r="22"/>${glyph}</g>${q.name && (on || ed || true) ? `<text class="pt-n" y="34">${esc(q.name)}</text>` : ""}</g>`;
+  });
+  return o;
+}
+const mpPointsRedraw = () => { const e = document.getElementById("mp-points"); if (e) e.innerHTML = mpPointsSvg(S.topic); };
 function mpSave() {
   return SentinelAuth.api("POST", "/api/lines", { topic: S.topic, lines: LN[S.topic] }).then(r => { if (!r.ok) throw new Error("save"); }).catch(() => { toast("Could not save the lines, try again"); mpLoadData(); });
 }
@@ -189,7 +211,7 @@ function mpKeepMap(old, html) {
   const tpl = document.createElement("template"); tpl.innerHTML = html;
   const n = tpl.content.querySelector(".mapsvg"); if (!n || n.dataset.t !== old.dataset.t) return false;
   ["viewBox", "data-z", "data-tool", "data-terr"].forEach(a => old.setAttribute(a, n.getAttribute(a)));
-  ["mp-lines", "mp-range", "mp-cities", "mp-troops"].forEach(id => { const a = old.querySelector("#" + id), b = n.querySelector("#" + id); if (a && b) a.innerHTML = b.innerHTML; });
+  ["mp-lines", "mp-range", "mp-points", "mp-cities", "mp-troops"].forEach(id => { const a = old.querySelector("#" + id), b = n.querySelector("#" + id); if (a && b) a.innerHTML = b.innerHTML; });
   n.replaceWith(old); $("page").replaceChildren(tpl.content); mpLabels(old); return true;
 }
 const mpRedrawLines = () => { const e = document.getElementById("mp-lines"); if (e) e.innerHTML = mpLinesSvg(S.topic); };
@@ -225,9 +247,9 @@ function pgMap() {
   if (!LN || !MPLAND || !MPB[t] || !mpTD || !MPREL[t]) { if (mpLoad !== 1 && mpLoad !== -1) { mpLoad = 1; mpLoadData(); } return head + `<section class="panel"><p class="muted">${mpLoad === -1 ? "Could not load the map." : "Loading the map…"}</p></section>`; }
   const g = mpGeo(t);
     if (MPT !== t) { MPT = t; MPV = mpFit(g); mpTS = null; mpPlace = null; mpSel = null; mpVx = null; mpDraft = []; mpTool = "edit"; }
-  const v = MPV, svg = `<svg class="mapsvg" data-t="${t}" viewBox="${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}" data-z="${g.W / v.w > 1.8 ? 1 : 0}" data-tool="${chair ? mpTool : ""}" data-terr="${mpTerr ? 1 : 0}" role="img" aria-label="Battle map">${mpBase(t)}<g id="mp-lines">${mpLinesSvg(t)}</g><g id="mp-range">${mpRangeSvg(t)}</g><g id="mp-cities">${mpCitiesSvg(t)}</g><g id="mp-troops">${mpTroopsSvg(t)}</g></svg>`;
+  const v = MPV, svg = `<svg class="mapsvg" data-t="${t}" viewBox="${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}" data-z="${g.W / v.w > 1.8 ? 1 : 0}" data-tool="${chair ? mpTool : ""}" data-terr="${mpTerr ? 1 : 0}" role="img" aria-label="Battle map">${mpBase(t)}<g id="mp-lines">${mpLinesSvg(t)}</g><g id="mp-range">${mpRangeSvg(t)}</g><g id="mp-points">${mpPointsSvg(t)}</g><g id="mp-cities">${mpCitiesSvg(t)}</g><g id="mp-troops">${mpTroopsSvg(t)}</g></svg>`;
   const zoom = `<div class="mp-zoom"><button class="btn sm" data-a="mapZoom" data-z="1.3" aria-label="Zoom in">${ico("plus")}</button><button class="btn sm" data-a="mapZoom" data-z="0.77" aria-label="Zoom out">−</button><button class="btn sm" data-a="mapZoom" data-z="0">Fit</button><button class="btn sm${mpTerr ? " on" : ""}" data-a="mapTerr">Terrain</button></div>`;
-  const legend = `<div class="mp-key"><span><i class="k-line"></i>Battle line</span><span><i class="k-riv"></i>River</span><span><i class="k-for"></i>Forest</span><span><i class="k-el"></i>Low to high ground</span><span><i class="k-dot"></i>Key city</span><span><i class="k-dot me"></i>${esc(chair ? sideLbl("me") : t === "t2" ? "Allied" : "France")}</span><span><i class="k-dot foe"></i>${esc(chair ? sideLbl("foe") : t === "t2" ? "Central" : "England")}</span><span>Zoom in for more cities</span></div>`;
+  const legend = `<div class="mp-key"><span><i class="k-line"></i>Battle line</span><span><i class="k-riv"></i>River</span><span><i class="k-for"></i>Forest</span><span><i class="k-el"></i>Low to high ground</span><span><i class="k-pt weak"></i>Weak point (+2 damage)</span><span><i class="k-pt fort"></i>Fortified point (-5 damage)</span><span><i class="k-dot"></i>Key city</span><span><i class="k-dot me"></i>${esc(chair ? sideLbl("me") : t === "t2" ? "Allied" : "France")}</span><span><i class="k-dot foe"></i>${esc(chair ? sideLbl("foe") : t === "t2" ? "Central" : "England")}</span><span>Zoom in for more cities</span></div>`;
   setTimeout(() => mpLabels(document.querySelector(".mapsvg")), 0);
   const col = c => `<aside class="mp-tl mp-${c}"><div class="mp-tl-in">${mpTroopCol(t, c)}</div></aside>`;
   return `<div class="mp-wrap">${chair ? mpChairBar(t) : mpViewBar(t)}<div class="mp-main">${col("L")}<div class="mp-board"><div class="mp-stage"><div class="mp-view">${zoom}${svg}</div></div>${legend}</div>${col("R")}</div><div class="mp-foot">${mpTerrCard()}</div></div>`;
@@ -241,11 +263,16 @@ function mpViewBar(t) {
 }
 function mpChairBar(t) {
   const L = LN[t], sel = L.find(l => l.id === mpSel);
-  const tools = seg("mapTool", [["edit", "Reshape"], ["draw", "Draw a line"], ["city", "Cities"]], mpTool, "t");
+  const tools = seg("mapTool", [["edit", "Reshape"], ["draw", "Draw a line"], ["city", "Cities"], ["pts", "Weak / fortified"]], mpTool, "t");
   let body = "";
   if (mpTool === "draw") {
     body = `<span class="muted">Click the map to lay down the points of a new line, from one end to the other.</span><span class="kv"><span>Points</span><b>${mpDraft.length}</b></span>
       <span class="mp-act"><button class="btn sm primary" data-a="mapFinish" ${mpDraft.length < 2 ? "disabled" : ""}>Finish line</button><button class="btn sm" data-a="mapUndoPt" ${mpDraft.length ? "" : "disabled"}>Undo point</button><button class="btn sm" data-a="mapCancelDraw">Cancel</button></span>`;
+  } else if (mpTool === "pts") {
+    const q = (PTS[t] || []).find(x => x.id === mpPt), n = (PTS[t] || []).length;
+    body = `<span class="muted">Pick a kind, then click the map to put it down. Click a point to change its radius or remove it. Units inside the circle take +2 damage (weak) or 5 less (fortified).</span>
+      ${seg("mapPtNew", [["weak", "Place weak point"], ["fort", "Place fortified point"]], mpPtNew || "", "k")}<span class="kv"><span>On this map</span><b>${n}</b></span>` +
+      (q ? `<b>${esc(q.name || PT_ICON[q.kind])}</b><span class="muted">${PT_ICON[q.kind]}, radius ${q.r} km</span><span class="mp-act"><button class="btn sm" data-a="mapPtR" data-d="-10">Smaller</button><button class="btn sm" data-a="mapPtR" data-d="10">Larger</button><button class="btn sm" data-a="mapPtKind">Make it ${q.kind === "weak" ? "fortified" : "weak"}</button><button class="btn sm" data-a="mapPtName">Rename</button><button class="btn sm danger" data-a="mapPtDel">Remove</button></span>` : "");
   } else if (mpTool === "city") {
     const cur = mpCity && ((LN.citySides && LN.citySides[t]) || {})[mpCity];
     body = mpCity ? `<b>${esc(mpCity)}</b><span class="muted">${cur ? "Given to a side by the chairs" : "Default"}. Which side holds it?</span>${seg("mapCitySide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["n", "Neutral"]], cur || "", "s")}<span class="mp-act"><button class="btn sm" data-a="mapCityDef" ${cur ? "" : "disabled"}>Back to default</button></span>` : `<span class="muted">Click any city on the map, then give it to a side.</span>`;
@@ -257,7 +284,7 @@ function mpChairBar(t) {
 }
 
 const MAPA = {
-  mapTool: el => { mpTool = el.dataset.t; mpDraft = []; mpVx = null; mpCity = null; mpPlace = null; render(); },
+  mapTool: el => { mpTool = el.dataset.t; mpPtNew = null; mpPt = null; mpDraft = []; mpVx = null; mpCity = null; mpPlace = null; render(); },
   mapZoom: el => {
     const z = Number(el.dataset.z), g = mpGeo(S.topic); if (!z) { MPV = mpFit(g); render(); return; }
     const cx = MPV.x + MPV.w / 2, cy = MPV.y + MPV.h / 2; MPV.w /= z; MPV.h /= z; MPV.x = cx - MPV.w / 2; MPV.y = cy - MPV.h / 2; mpClampView(); render();
@@ -265,6 +292,12 @@ const MAPA = {
   mapBg: (el, e) => {
     if (ROLE === "delegate") return;
     if (mpPlace) { const svg = el.ownerSVGElement, pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(svg.getScreenCTM().inverse()), ll = mpLL(mpGeo(S.topic), q.x, q.y); mpTroopPlaceAt(ll[0], ll[1]); return; }
+    if (mpTool === "pts") {
+      if (!mpPtNew) { if (mpPt) { mpPt = null; render(); } return; }
+      const svg = el.ownerSVGElement, pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(svg.getScreenCTM().inverse()), ll = mpLL(mpGeo(S.topic), q.x, q.y), L = PTS[S.topic] = PTS[S.topic] || [];
+      if (L.length >= 60) { toast("Sixty points is the most a map can hold"); return; }
+      const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); L.push({ id, kind: mpPtNew, lat: ll[0], lon: ll[1], r: 50, name: "" }); mpPt = id; mpPtNew = null; render(); mpPtSave(); return;
+    }
     if (mpTS && mpTool !== "draw") { mpTS = null; mpRG = null; render(); return; }
     if (mpTool === "draw") {
       const svg = el.ownerSVGElement, pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(svg.getScreenCTM().inverse());
@@ -294,6 +327,12 @@ const MAPA = {
     const dp = (a, b) => { let m = 0, k = -1; const A = xy[a], B = xy[b], vx = B[0] - A[0], vy = B[1] - A[1], L = Math.hypot(vx, vy) || 1; for (let i = a + 1; i < b; i++) { const d = Math.abs((xy[i][0] - A[0]) * vy - (xy[i][1] - A[1]) * vx) / L; if (d > m) { m = d; k = i; } } if (m > tol && k > 0) { keep[k] = true; dp(a, k); dp(k, b); } };
     keep[0] = keep[xy.length - 1] = true; dp(0, xy.length - 1); const n0 = l.pts.length; l.pts = l.pts.filter((p, i) => keep[i]); mpVx = null; render(); mpSave(); toast(n0 + " points down to " + l.pts.length);
   },
+  mapPtNew: el => { mpPtNew = mpPtNew === el.dataset.k ? null : el.dataset.k; mpPt = null; render(); },
+  mapPt: el => { if (mpTool !== "pts" || ROLE === "delegate") return; mpPt = el.dataset.id; mpPtNew = null; render(); },
+  mapPtR: el => { const q = (PTS[S.topic] || []).find(x => x.id === mpPt); if (!q) return; q.r = Math.max(5, Math.min(1000, q.r + Number(el.dataset.d))); render(); mpPtSave(); },
+  mapPtKind: () => { const q = (PTS[S.topic] || []).find(x => x.id === mpPt); if (!q) return; q.kind = q.kind === "weak" ? "fort" : "weak"; render(); mpPtSave(); },
+  mapPtName: () => { const q = (PTS[S.topic] || []).find(x => x.id === mpPt); if (!q) return; askText("Name this point", "Name", q.name || "", nm => { q.name = nm.slice(0, 40); render(); mpPtSave(); }); },
+  mapPtDel: () => { PTS[S.topic] = (PTS[S.topic] || []).filter(x => x.id !== mpPt); mpPt = null; render(); mpPtSave(); },
   mapZone: el => { const l = LN[S.topic].find(x => x.id === mpSel); if (!l) return; l.zone = el.dataset.z; render(); mpSave(); },
   mapTerrCard: () => { mpTerrOpen = !mpTerrOpen; render(); },
   mapTerr: () => { mpTerr = !mpTerr; render(); },
