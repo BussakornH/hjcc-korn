@@ -224,9 +224,6 @@ async function updateKv(k, fn, tries) {
   }
   throw Object.assign(new Error("busy"), { status: 503, error: "busy" });
 }
-/* "Something the chairs look at just changed." Every write to the troops or to a delegate's forces stamps a fresh random tag here; /api/pulse hands the tag out
-   cheaply, so a chair's page can poll every couple of seconds and only fetch the full lists when the tag is new. (Vercel functions cannot push to a browser.) */
-async function bumpLive() { try { await db.setKv("live:rev", Date.now().toString(36) + crypto.randomBytes(4).toString("hex")); } catch (e) { /* the write itself already succeeded; the 10 s reload still catches it */ } }
 const tooBig = () => Object.assign(new Error("payload too large"), { status: 413, error: "too-large" });
 async function readJson(req, max) {
   max = max || MAX_BODY;
@@ -251,4 +248,4 @@ const wrap = (fn) => async (req, res) => {
   }
 };
 
-module.exports = { ROLES, LIMIT_IP, LIMIT_ACCT, LIMIT_ACCT_ALL, PW_MIN, db, hashPassword, verifyPassword, passwordProblem, dummyHash, makeToken, session, send, readJson, sameOrigin, clientIp, wrap, SESSION_TTL, verOf, updateKv, bumpLive };
+module.exports = { ROLES, LIMIT_IP, LIMIT_ACCT, LIMIT_ACCT_ALL, PW_MIN, db, hashPassword, verifyPassword, passwordProblem, dummyHash, makeToken, session, send, readJson, sameOrigin, clientIp, wrap, SESSION_TTL, verOf, updateKv };
