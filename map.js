@@ -261,26 +261,33 @@ function mpViewBar(t) {
   const L = LN[t];
   return `<section class="panel mp-card mp-bar"><div class="mp-bar-lines"><span class="mp-bar-k">Battle lines</span><div class="mp-chips">${mpChips(L, "mapFocus") || '<span class="muted">The chairs have not drawn a battle line yet.</span>'}</div></div></section>`;
 }
+/* one context strip under the tools: what this tool does on the left, its controls on the right */
+const mpCtx = (main, ctl) => `<div class="mp-ctx"><div class="mp-ctx-main">${main}</div>${ctl ? `<div class="mp-ctx-ctl">${ctl}</div>` : ""}</div>`;
+const mpHint = (title, text) => `${title ? `<b>${title}</b>` : ""}<span>${text}</span>`;
+const mpLbl = t => `<span class="mp-lbl">${t}</span>`;
 function mpChairBar(t) {
   const L = LN[t], sel = L.find(l => l.id === mpSel);
   const tools = seg("mapTool", [["edit", "Reshape"], ["draw", "Draw a line"], ["city", "Cities"], ["pts", "Weak / fortified"]], mpTool, "t");
-  let body = "";
+  let ctx = "";
   if (mpTool === "draw") {
-    body = `<span class="muted">Click the map to lay down the points of a new line, from one end to the other.</span><span class="kv"><span>Points</span><b>${mpDraft.length}</b></span>
-      <span class="mp-act"><button class="btn sm primary" data-a="mapFinish" ${mpDraft.length < 2 ? "disabled" : ""}>Finish line</button><button class="btn sm" data-a="mapUndoPt" ${mpDraft.length ? "" : "disabled"}>Undo point</button><button class="btn sm" data-a="mapCancelDraw">Cancel</button></span>`;
+    ctx = mpCtx(mpHint(`Drawing a new line <em class="mp-n">${plural(mpDraft.length, "point")}</em>`, "Click the map from one end of the line to the other."),
+      `<button class="btn sm" data-a="mapUndoPt" ${mpDraft.length ? "" : "disabled"}>Undo point</button><button class="btn sm" data-a="mapCancelDraw">Cancel</button><button class="btn sm primary" data-a="mapFinish" ${mpDraft.length < 2 ? "disabled" : ""}>Finish line</button>`);
   } else if (mpTool === "pts") {
     const q = (PTS[t] || []).find(x => x.id === mpPt), n = (PTS[t] || []).length;
-    body = `<span class="muted">Pick a kind, then click the map to put it down. Click a point to change its radius or remove it. Units inside the circle take +2 damage (weak) or 5 less (fortified).</span>
-      ${seg("mapPtNew", [["weak", "Place weak point"], ["fort", "Place fortified point"]], mpPtNew || "", "k")}<span class="kv"><span>On this map</span><b>${n}</b></span>` +
-      (q ? `<b>${esc(q.name || PT_ICON[q.kind])}</b><span class="muted">${PT_ICON[q.kind]}, radius ${q.r} km</span><span class="mp-act"><button class="btn sm" data-a="mapPtR" data-d="-10">Smaller</button><button class="btn sm" data-a="mapPtR" data-d="10">Larger</button><button class="btn sm" data-a="mapPtKind">Make it ${q.kind === "weak" ? "fortified" : "weak"}</button><button class="btn sm" data-a="mapPtName">Rename</button><button class="btn sm danger" data-a="mapPtDel">Remove</button></span>` : "");
+    const main = q ? mpHint(`${esc(q.name || PT_ICON[q.kind])} <em class="mp-n">${PT_ICON[q.kind]} · ${q.r} km</em>`, "Resize it, switch its kind, or remove it.") : mpHint(`Weak / fortified points <em class="mp-n">${n} on this map</em>`, "Pick a kind, then click the map. Click a point to edit it.");
+    ctx = mpCtx(main, (q ? `<button class="btn sm" data-a="mapPtR" data-d="-10">Smaller</button><button class="btn sm" data-a="mapPtR" data-d="10">Larger</button><button class="btn sm" data-a="mapPtKind">Make ${q.kind === "weak" ? "fortified" : "weak"}</button><button class="btn sm" data-a="mapPtName">Rename</button><button class="btn sm danger" data-a="mapPtDel">Remove</button><i class="mp-sep"></i>` : "") +
+      seg("mapPtNew", [["weak", "Place weak"], ["fort", "Place fortified"]], mpPtNew || "", "k"));
   } else if (mpTool === "city") {
     const cur = mpCity && ((LN.citySides && LN.citySides[t]) || {})[mpCity];
-    body = mpCity ? `<b>${esc(mpCity)}</b><span class="muted">${cur ? "Given to a side by the chairs" : "Default"}. Which side holds it?</span>${seg("mapCitySide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["n", "Neutral"]], cur || "", "s")}<span class="mp-act"><button class="btn sm" data-a="mapCityDef" ${cur ? "" : "disabled"}>Back to default</button></span>` : `<span class="muted">Click any city on the map, then give it to a side.</span>`;
+    ctx = mpCity ? mpCtx(mpHint(esc(mpCity), cur ? "Given to a side by the chairs." : "Default side. Who holds it?"), seg("mapCitySide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["n", "Neutral"]], cur || "", "s") + `<button class="btn sm" data-a="mapCityDef" ${cur ? "" : "disabled"}>Back to default</button>`)
+      : mpCtx(mpHint("", "Click a city on the map, then give it to a side."));
   } else if (sel) {
-    body = `<b>${esc(sel.name)}</b><span class="muted">${plural(sel.pts.length, "point")}. Drag a round point to move it, a small one to bend the line. ${mpVx != null ? "Remove point, or double-click it, deletes the chosen point." : "Click a point to choose it."}</span>
-      ${seg("mapZone", mpClosed(mpGeo(t), sel) ? [["", "Off"], ["w", "Blue inside"], ["e", "Red inside"]] : [["", "Off"], ["w", "Blue in the west"], ["e", "Blue in the east"]], sel.zone || "", "z")}<span class="mp-act"><button class="btn sm" data-a="mapRename">Rename</button><button class="btn sm" data-a="mapSimplify">Fewer points</button><button class="btn sm" data-a="mapDelPt" ${mpVx != null && sel.pts.length > 2 ? "" : "disabled"}>Remove point</button><button class="btn sm danger" data-a="mapDelLine">Delete line</button></span>`;
-  } else body = `<span class="muted">${L.length ? "Click a line to move or bend it, or choose Draw a line to add one." : "No battle lines yet. Choose Draw a line to add the first one."}</span>`;
-  return `<section class="panel mp-card mp-bar"><div class="mp-bar-top">${tools}<div class="mp-bar-b">${body}</div></div><div class="mp-bar-lines"><span class="mp-bar-k">Battle lines</span><div class="mp-chips">${mpChips(L, "mapLine", mpSel) || '<span class="muted">None yet</span>'}</div><button class="btn sm plain" data-a="mapReset">Restore defaults</button></div></section>`;
+    const zone = seg("mapZone", mpClosed(mpGeo(t), sel) ? [["", "Off"], ["w", "Blue inside"], ["e", "Red inside"]] : [["", "Off"], ["w", "Blue west"], ["e", "Blue east"]], sel.zone || "", "z");
+    ctx = mpCtx(mpHint(`${esc(sel.name)} <em class="mp-n">${plural(sel.pts.length, "point")}</em>`, mpVx != null ? "Point chosen. Remove it, or double-click it." : "Drag a round point to move it, a small one to bend the line."),
+      `${mpLbl("Zone")}${zone}<i class="mp-sep"></i><button class="btn sm" data-a="mapRename">Rename</button><button class="btn sm" data-a="mapSimplify">Fewer points</button><button class="btn sm" data-a="mapDelPt" ${mpVx != null && sel.pts.length > 2 ? "" : "disabled"}>Remove point</button><button class="btn sm danger" data-a="mapDelLine">Delete line</button>`);
+  } else ctx = mpCtx(mpHint("", L.length ? "Click a line to move or bend it, or pick one below." : "No battle lines yet. Draw the first one."));
+  const chips = mpChips(L, "mapLine", mpSel) + (mpTool === "draw" ? "" : `<button class="mp-chip mp-add" data-a="mapTool" data-t="draw">+ New line</button>`);
+  return `<section class="panel mp-card mp-bar"><div class="mp-bar-top">${tools}<button class="btn sm plain" data-a="mapReset">Restore defaults</button></div>${ctx}<div class="mp-bar-lines"><span class="mp-bar-k">Battle lines</span><div class="mp-chips">${chips}</div></div></section>`;
 }
 
 const MAPA = {

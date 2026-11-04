@@ -744,19 +744,28 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .mp-main { display: grid; grid-template-columns: minmax(190px, 1fr) minmax(0, max(640px, calc((100vh - 296px) * 16 / 9))) minmax(190px, 1fr); gap: 12px; justify-content: center; align-items: stretch; }
 .mp-board { align-self: start; }
 .mp-tl { position: relative; min-width: 0; } .mp-tl-in { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
-/* the toolbar above the map: tools and what they do on one row, the battle lines on a quiet second row */
+/* the toolbar above the map: tools on top, a context strip for the chosen tool, the battle lines at the bottom */
 .panel.mp-bar { display: flex; flex-direction: column; gap: 0; padding: 0; border-radius: 14px; overflow: hidden; }
-.mp-bar-top, .mp-bar-lines { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 14px; min-width: 0; }
-.mp-bar-top + .mp-bar-lines { border-top: 1px solid var(--line-2); background: var(--panel-2); }
-.mp-bar-b { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; flex: 1 1 280px; min-width: 0; font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.4; }
-.mp-bar-b > b { color: var(--ink); font-weight: 600; } .mp-bar-b > .muted { color: var(--ink-3); }
-.mp-bar .mp-act { display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 0 0 0 auto; } .mp-bar .kv { display: inline-flex; gap: 6px; align-items: baseline; padding: 0; border: 0; }
+.mp-bar-top, .mp-ctx, .mp-bar-lines { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 10px 14px; min-width: 0; }
+.mp-bar-top { justify-content: space-between; }
+.mp-bar-top .seg { padding: 3px; } .mp-bar-top .seg button { padding: 6px 16px; }
+.mp-ctx, .mp-bar-lines { border-top: 1px solid var(--line-2); }
+.mp-bar-lines { background: var(--panel-2); }
+.mp-ctx { justify-content: space-between; min-height: 52px; }
+.mp-ctx-main { display: flex; flex-direction: column; gap: 2px; flex: 1 1 260px; min-width: 0; font-size: var(--fs-sm); line-height: 1.35; }
+.mp-ctx-main > b { color: var(--ink); font-weight: 600; font-size: var(--fs-md); }
+.mp-ctx-main > span { color: var(--ink-3); }
+.mp-n { font-style: normal; font-weight: 500; font-size: var(--fs-xs); color: var(--ink-3); margin-left: 8px; padding: 1px 8px; border-radius: var(--pill); background: var(--panel-3); }
+.mp-ctx-ctl { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; }
+.mp-lbl { color: var(--ink-3); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.mp-sep { align-self: stretch; width: 1px; min-height: 20px; background: var(--line); margin: 0 4px; }
 .mp-bar-k { flex: none; color: var(--ink-3); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .mp-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1 1 200px; min-width: 0; font-size: var(--fs-sm); }
 .mp-chip { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px 0 10px; border: 1px solid var(--line); border-radius: var(--pill); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-sm); cursor: pointer; transition: border-color .12s, background .12s; }
 .mp-chip:hover { border-color: var(--ink-3); } .mp-chip b { font-weight: 600; } .mp-chip span { color: var(--ink-3); font-size: var(--fs-xs); }
 .mp-chip .mp-sw { flex: none; width: 14px; height: 3px; border-radius: 2px; background: var(--ink-2); }
 .mp-chip.on { border-color: var(--accent); background: var(--accent-soft); } .mp-chip.on .mp-sw { background: var(--accent); }
+.mp-chip.mp-add { border-style: dashed; color: var(--ink-2); padding: 0 12px; } .mp-chip.mp-add:hover { color: var(--ink); border-color: var(--accent); }
 .mp-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .mp-chip { transition: none; } }
 .mp-view { position: relative; aspect-ratio: 16 / 9; }
