@@ -7,8 +7,10 @@ const DEFAULTS = require("./_lines");
    POST { topic, lines }            -> replace the topic's lines (add, remove and reshape in one go)   (admin, chair)
    POST { topic, reset: true }      -> go back to the default lines                                    (admin, chair)
    POST { topic, citySide: { name, side } } -> give a city to a side: "me" | "foe" | "n", or "default" to clear   (admin, chair)
+   POST { topic, points }           -> replace the topic's weak / fortified points (admin, chair)
+   GET also returns points: { t1: [{ id, kind: "weak"|"fort", lat, lon, r (km), name }], t2: [...] }
    GET also returns citySides: { t1: { cityName: side }, t2: {...} } */
-const TOPIC = ["t1", "t2"], MAX_LINES = 12, MAX_PTS = 120;
+const TOPIC = ["t1", "t2"], MAX_LINES = 12, MAX_PTS = 120, MAX_POINTS = 60;
 const clean = (v) => {
   if (!Array.isArray(v) || v.length > MAX_LINES) return null;
   const seen = new Set(), out = [];
@@ -21,14 +23,24 @@ const clean = (v) => {
   }
   return out;
 };
+const cleanPoints = (v) => {
+  if (!Array.isArray(v) || v.length > MAX_POINTS) return null;
+  const seen = new Set(), out = [];
+  for (const q of v) {
+    const id = String((q && q.id) || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24), lat = Number(q && q.lat), lon = Number(q && q.lon), r = Number(q && q.r);
+    if (!id || seen.has(id) || (q.kind !== "weak" && q.kind !== "fort") || !(Math.abs(lat) <= 90) || !(Math.abs(lon) <= 180) || !(r >= 1 && r <= 1000)) return null;
+    seen.add(id); out.push({ id, kind: q.kind, lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000, r: Math.round(r), name: String((q && q.name) || "").trim().slice(0, 40) });
+  }
+  return out;
+};
 module.exports = L.wrap(async (req, res) => {
   const me = await L.session(req);
   if (!me) return L.send(res, 401, { error: "auth" });
   const canEdit = me.role === "admin" || me.role === "chair";
   if (req.method === "GET") {
     const out = { canEdit };
-    out.citySides = {};
-    for (const t of TOPIC) { out[t] = (await L.db.getKv("lines:" + t)) || DEFAULTS[t].map((l) => ({ id: l.id, name: l.name, pts: l.pts })); out.citySides[t] = (await L.db.getKv("citysides:" + t)) || {}; }
+    out.citySides = {}; out.points = {};
+    for (const t of TOPIC) { out.points[t] = (await L.db.getKv("points:" + t)) || []; out[t] = (await L.db.getKv("lines:" + t)) || DEFAULTS[t].map((l) => ({ id: l.id, name: l.name, pts: l.pts })); out.citySides[t] = (await L.db.getKv("citysides:" + t)) || {}; }
     return L.send(res, 200, out);
   }
   if (!canEdit) return L.send(res, 403, { error: "forbidden" });
@@ -45,6 +57,10 @@ module.exports = L.wrap(async (req, res) => {
       return m;
     });
     return L.send(res, 200, { ok: true });
+  }
+  if (b.points !== undefined) {
+    const pts = cleanPoints(b.points); if (!pts) return L.send(res, 400, { error: "points" });
+    await L.db.setKv("points:" + t, pts); return L.send(res, 200, { ok: true });
   }
   if (b.reset) { await L.db.setKv("lines:" + t, null); return L.send(res, 200, { ok: true }); }
   const lines = clean(b.lines);
