@@ -200,7 +200,7 @@ input:disabled, select:disabled, textarea:disabled { opacity: .55; cursor: not-a
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .brand .lg-l { display: none; } :root:not([data-theme="light"]) .brand .lg-d { display: block; } }
 
 /* logo in the top bar, so it stays visible while the side bar is folded away */
-.top-l { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.top-l { display: flex; align-items: center; gap: 14px; flex: none; }   /* never squeezed to nothing: on a phone the title would paint over the menu button */
 .top-logo { display: flex; align-items: center; }
 .top-logo img { display: block; width: auto; height: 30px; }
 .top-logo .lg-d { display: none; }
