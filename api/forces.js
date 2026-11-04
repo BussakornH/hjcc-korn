@@ -44,5 +44,6 @@ module.exports = L.wrap(async (req, res) => {
   if (!TOPIC.includes(t)) return L.send(res, 400, { error: "topic" });
   const units = clean(b.units); if (!units) return L.send(res, 400, { error: "units" });
   await L.db.setKv("forces:" + t + ":" + me.u, units);
+  await L.bumpLive();
   L.send(res, 200, { ok: true });
 });

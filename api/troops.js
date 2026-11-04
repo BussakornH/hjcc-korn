@@ -61,6 +61,7 @@ module.exports = L.wrap(async (req, res) => {
       }
       return changed ? list : undefined;
     });
+    await L.bumpLive();
     return L.send(res, 200, { ok: true });
   }
   if (!canEdit) return L.send(res, 403, { error: "forbidden" });
@@ -70,5 +71,6 @@ module.exports = L.wrap(async (req, res) => {
   const raw = await L.db.getKvRaw(key);
   if (String(b.base == null ? "" : b.base) !== L.verOf(raw)) return stale(raw);
   if (!(await L.db.casKv(key, raw, troops))) return stale(await L.db.getKvRaw(key));   /* someone saved between our read and our write */
+  await L.bumpLive();
   L.send(res, 200, { ok: true, ver: L.verOf(JSON.stringify(troops)), troops });
 });

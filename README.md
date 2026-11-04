@@ -44,6 +44,10 @@ get a "stale" answer for the second one, and its page merges its own edits onto 
 Where the same field of the same troop was changed by both, the chair's value wins. Battle lines are still saved as a whole list,
 so two chairs redrawing lines at the same moment can still overwrite each other.
 
+## Live view for the chairs
+Vercel functions cannot push to a browser, so the "notification" is a revision tag. When a delegate moves a unit on the battle order board (copied up 0.25 s later by `/api/forces`) or anyone moves a troop on the map (`/api/troops`), the server stamps a new random tag (`live:rev`).
+Every chair and delegate page asks `/api/pulse` for that tag every 2 seconds (one tiny read, only while the tab is visible) and reloads the troops and forces the moment it changes. The old 10-second reload stays as a safety net.
+
 ## Chair's manual
 `manual/index.html` is the Chair's Manual (50 A4 pages), linked from the home page footer; `manual/sentinel-chair-manual.pdf` is the same thing as a PDF. Both are built from `manual/src/` (page text in `p1.js` to `p5.js`, design in `style.css`, screenshots in `manual/img/`):
 ```

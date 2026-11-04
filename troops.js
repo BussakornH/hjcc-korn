@@ -41,7 +41,7 @@ function mpForcesPush() {
     const fk = "hjcc-fpush:" + KEY + ":" + t; let owns = false; try { owns = localStorage.getItem(fk) === "1"; } catch (e) {}
     if (!units.length && !owns) return;
     SentinelAuth.api("POST", "/api/forces", { topic: t, units }).then(r => { if (r.ok) { mpFSent[t] = j; if (units.length) { try { localStorage.setItem(fk, "1"); } catch (e) {} } } }).catch(() => {});
-  }), 1200);
+  }), 250);   /* short, so a move on the battle order board reaches the chairs almost at once */
 }
 let mpFOk = false;
 function mpForcesLoad() {
@@ -376,4 +376,16 @@ function mpTroopPlaceAt(lat, lon) {
   document.addEventListener("keydown", e => { if (e.key === "Escape" && mpPlace) { mpPlace = null; if (typeof UI !== "undefined" && UI.page === "map") render(); } });
 })();
 /* the troops list and this device's forces stay in step while you are on any page */
-setInterval(() => { if (typeof ROLE !== "undefined" && ROLE !== "admin" && mpTLoaded && !document.hidden && !mpTDrag) mpTroopsLoad(); }, 10000);
+setInterval(() => { if (typeof ROLE !== "undefined" && ROLE !== "admin" && mpTLoaded && !document.hidden && !mpTDrag) mpTroopsLoad(); }, 10000);   /* the safety net */
+/* Live view: ask the server every 2 s whether anything moved (one tiny read). A new tag means a delegate moved a unit on the battle order board, or someone moved a troop
+   on the map, so pull the lists now instead of waiting for the 10 s reload. */
+let mpRev = null, mpRevBusy = false;
+function mpPulse() {
+  if (mpRevBusy || document.hidden || typeof ROLE === "undefined" || ROLE === "admin" || !mpTLoaded || mpTDrag) return; mpRevBusy = true;
+  SentinelAuth.api("GET", "/api/pulse").then(r => r.ok ? r.json() : null).then(j => {
+    if (!j) return; const first = mpRev === null; if (j.rev === mpRev) return; mpRev = j.rev;
+    if (!first) mpTroopsLoad();
+  }, () => {}).then(() => { mpRevBusy = false; });
+}
+setInterval(mpPulse, 2000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) mpPulse(); });
