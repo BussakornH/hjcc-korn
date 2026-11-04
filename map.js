@@ -8,7 +8,7 @@ const MPCFG = {
   t2: { lon: [-11, 48], lat: [30, 63.5], url: "borders-1914.json", rename: { "United Kingdom of Great Britain and Ireland": "United Kingdom" },
     side: { "France": "L", "United Kingdom of Great Britain and Ireland": "L", "Russian Empire": "L", "Kingdom of Italy": "L", "Belgium": "L", "Serbia": "L", "Romania": "L", "Greece": "L", "German Empire": "R", "Austro-Hungarian Empire": "R", "Ottoman Empire": "R", "Bulgaria": "R" } }
 };
-let mpTerrOpen = false, mpDEM = {}, MPREL = {}, mpTD = null, mpTerr = true, mpCity = null, MPLAND = null, MPB = {}, LN = null, MPBASE = {}, MPV = null, MPT = null, mpTool = "edit", mpSel = null, mpVx = null, mpDraft = [], mpLoad = 0, mpDragged = false, mpDrag = null, mpPressed = 0, mpFly = 0, mpPt = null, mpPtNew = null, PTS = { t1: [], t2: [] }, mpPtAt = 0;
+let mpPD = null, mpTerrOpen = false, mpDEM = {}, MPREL = {}, mpTD = null, mpTerr = true, mpCity = null, MPLAND = null, MPB = {}, LN = null, MPBASE = {}, MPV = null, MPT = null, mpTool = "edit", mpSel = null, mpVx = null, mpDraft = [], mpLoad = 0, mpDragged = false, mpDrag = null, mpPressed = 0, mpFly = 0, mpPt = null, mpPtNew = null, PTS = { t1: [], t2: [] }, mpPtAt = 0;
 
 /* every map is 1000 units wide, so text and points look the same size on both topics; sc is units per degree of latitude */
 const mpGeo = t => { const c = MPCFG[t], k = Math.cos(((c.lat[0] + c.lat[1]) / 2) * Math.PI / 180), sc = 1000 / ((c.lon[1] - c.lon[0]) * k); return { c, k, sc, lon0: c.lon[0], top: c.lat[1], W: 1000, H: (c.lat[1] - c.lat[0]) * sc }; };
@@ -31,7 +31,7 @@ function mpLoadData(quiet) {
   return Promise.all([need, bor, lines, terr, dem, trp]).then(a => {
     LN = a[2]; mpLoad = 2; mpPtAdopt(a[2]);
     if (mpSel && !LN[t].some(l => l.id === mpSel)) { mpSel = null; mpVx = null; }
-    if (UI.page === "map" && !(quiet && (mpDrag || mpDraft.length || document.querySelector("#page :focus")))) render();
+    if (UI.page === "map" && !(quiet && (mpDrag || mpPD || mpDraft.length || document.querySelector("#page :focus")))) render();
   }, () => { mpLoad = -1; if (UI.page === "map") render(); });
 }
 /* weak / fortified points: a circle on the map. Units whose marker stands inside one take +2 (weak) or -5 (fortified) damage, see zoneNet() in app.js */
@@ -51,7 +51,7 @@ function mpPointsSvg(t) {
     const glyph = q.kind === "weak"
       ? `<path d="M-13 -15H13V3C13 11 6 16 0 19C-6 16 -13 11 -13 3Z" class="pt-sh"/><path d="M2 -12L-4 -1L3 1L-3 14" class="pt-cr"/>`
       : `<path d="M-14 15V-6H-9V-11H-4V-6H4V-11H9V-6H14V15Z" class="pt-sh"/><path d="M-4 15V5A4 4 0 0 1 4 5V15Z" class="pt-door"/>`;
-    o += `<g class="pt pt-${q.kind}${on ? " on" : ""}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><circle class="pt-c" r="${r.toFixed(1)}"/><g class="pt-i" data-a="mapPt" data-id="${esc(q.id)}"><circle class="pt-hit" r="22"/>${glyph}</g>${q.name && (on || ed || true) ? `<text class="pt-n" y="34">${esc(q.name)}</text>` : ""}</g>`;
+    o += `<g class="pt pt-${q.kind}${on ? " on" : ""}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><circle class="pt-c" r="${r.toFixed(1)}"/><g class="pt-i" data-a="mapPt" data-id="${esc(q.id)}"><circle class="pt-hit" r="22"/>${glyph}</g>${on && ed && mpTool === "pts" ? `<g class="pt-rg" transform="translate(${r.toFixed(1)} 0)"><g class="pt-rh" data-id="${esc(q.id)}"><circle class="pt-rhit" r="14"/><circle class="pt-rd" r="6"/></g></g>` : ""}${q.name && (on || ed || true) ? `<text class="pt-n" y="34">${esc(q.name)}</text>` : ""}</g>`;
   });
   return o;
 }
@@ -203,8 +203,8 @@ function mpLinesSvg(t) {
 function mpAsk(title, text, label, cb) { UI.askCb = cb; openModal(`<h2>${esc(title)}</h2><p class="muted" style="margin-top:10px">${esc(text)}</p><div class="m-act"><button class="btn" data-a="modalClose">Cancel</button><button class="btn danger" data-a="mapYes">${esc(label)}</button></div>`); }
 /* laying down or taking back a point only redraws the line and the counter, not the whole page (that flashed) */
 function mpDraftUi() {
-  mpRedrawLines(); const p = document.querySelector(".mp-act [data-a=mapFinish]"); if (!p) return;
-  p.disabled = mpDraft.length < 2; document.querySelector(".mp-act [data-a=mapUndoPt]").disabled = !mpDraft.length; const b = p.closest(".mp-card").querySelector(".kv b"); if (b) b.textContent = mpDraft.length;
+  mpRedrawLines(); const p = document.querySelector(".mp-bar [data-a=mapFinish]"); if (!p) return;
+  p.disabled = mpDraft.length < 2; document.querySelector(".mp-bar [data-a=mapUndoPt]").disabled = !mpDraft.length; const b = p.closest(".mp-card").querySelector(".mp-n"); if (b) b.textContent = plural(mpDraft.length, "point");
 }
 /* a redraw of the map page keeps the live map (borders, relief, terrain) and swaps only the layers that change: rebuilding the picture made the whole map flash */
 function mpKeepMap(old, html) {
@@ -261,26 +261,33 @@ function mpViewBar(t) {
   const L = LN[t];
   return `<section class="panel mp-card mp-bar"><div class="mp-bar-lines"><span class="mp-bar-k">Battle lines</span><div class="mp-chips">${mpChips(L, "mapFocus") || '<span class="muted">The chairs have not drawn a battle line yet.</span>'}</div></div></section>`;
 }
+/* one context strip under the tools: what this tool does on the left, its controls on the right */
+const mpCtx = (main, ctl) => `<div class="mp-ctx"><div class="mp-ctx-main">${main}</div>${ctl ? `<div class="mp-ctx-ctl">${ctl}</div>` : ""}</div>`;
+const mpHint = (title, text) => `${title ? `<b>${title}</b>` : ""}<span>${text}</span>`;
+const mpLbl = t => `<span class="mp-lbl">${t}</span>`;
 function mpChairBar(t) {
   const L = LN[t], sel = L.find(l => l.id === mpSel);
   const tools = seg("mapTool", [["edit", "Reshape"], ["draw", "Draw a line"], ["city", "Cities"], ["pts", "Weak / fortified"]], mpTool, "t");
-  let body = "";
+  let ctx = "";
   if (mpTool === "draw") {
-    body = `<span class="muted">Click the map to lay down the points of a new line, from one end to the other.</span><span class="kv"><span>Points</span><b>${mpDraft.length}</b></span>
-      <span class="mp-act"><button class="btn sm primary" data-a="mapFinish" ${mpDraft.length < 2 ? "disabled" : ""}>Finish line</button><button class="btn sm" data-a="mapUndoPt" ${mpDraft.length ? "" : "disabled"}>Undo point</button><button class="btn sm" data-a="mapCancelDraw">Cancel</button></span>`;
+    ctx = mpCtx(mpHint(`Drawing a new line <em class="mp-n">${plural(mpDraft.length, "point")}</em>`, "Click the map from one end of the line to the other."),
+      `<button class="btn sm" data-a="mapUndoPt" ${mpDraft.length ? "" : "disabled"}>Undo point</button><button class="btn sm" data-a="mapCancelDraw">Cancel</button><button class="btn sm primary" data-a="mapFinish" ${mpDraft.length < 2 ? "disabled" : ""}>Finish line</button>`);
   } else if (mpTool === "pts") {
     const q = (PTS[t] || []).find(x => x.id === mpPt), n = (PTS[t] || []).length;
-    body = `<span class="muted">Pick a kind, then click the map to put it down. Click a point to change its radius or remove it. Units inside the circle take +2 damage (weak) or 5 less (fortified).</span>
-      ${seg("mapPtNew", [["weak", "Place weak point"], ["fort", "Place fortified point"]], mpPtNew || "", "k")}<span class="kv"><span>On this map</span><b>${n}</b></span>` +
-      (q ? `<b>${esc(q.name || PT_ICON[q.kind])}</b><span class="muted">${PT_ICON[q.kind]}, radius ${q.r} km</span><span class="mp-act"><button class="btn sm" data-a="mapPtR" data-d="-10">Smaller</button><button class="btn sm" data-a="mapPtR" data-d="10">Larger</button><button class="btn sm" data-a="mapPtKind">Make it ${q.kind === "weak" ? "fortified" : "weak"}</button><button class="btn sm" data-a="mapPtName">Rename</button><button class="btn sm danger" data-a="mapPtDel">Remove</button></span>` : "");
+    const main = q ? mpHint(`${esc(q.name || PT_ICON[q.kind])} <em class="mp-n">${q.name ? PT_ICON[q.kind] + " · " : ""}${q.r} km radius</em>`, "Drag it to move it, drag the ring to resize.") : mpHint(`Weak / fortified points <em class="mp-n">${n} on this map</em>`, "Pick a kind, then click the map. Drag a point to move it.");
+    ctx = mpCtx(main, (q ? `<button class="btn sm" data-a="mapPtR" data-d="-10">Smaller</button><button class="btn sm" data-a="mapPtR" data-d="10">Larger</button><button class="btn sm" data-a="mapPtKind">Make ${q.kind === "weak" ? "fortified" : "weak"}</button><button class="btn sm" data-a="mapPtName">Rename</button><button class="btn sm danger" data-a="mapPtDel">Remove</button><i class="mp-sep"></i>` : "") +
+      seg("mapPtNew", [["weak", "Place weak"], ["fort", "Place fortified"]], mpPtNew || "", "k"));
   } else if (mpTool === "city") {
     const cur = mpCity && ((LN.citySides && LN.citySides[t]) || {})[mpCity];
-    body = mpCity ? `<b>${esc(mpCity)}</b><span class="muted">${cur ? "Given to a side by the chairs" : "Default"}. Which side holds it?</span>${seg("mapCitySide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["n", "Neutral"]], cur || "", "s")}<span class="mp-act"><button class="btn sm" data-a="mapCityDef" ${cur ? "" : "disabled"}>Back to default</button></span>` : `<span class="muted">Click any city on the map, then give it to a side.</span>`;
+    ctx = mpCity ? mpCtx(mpHint(esc(mpCity), cur ? "Given to a side by the chairs." : "Default side. Who holds it?"), seg("mapCitySide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["n", "Neutral"]], cur || "", "s") + `<button class="btn sm" data-a="mapCityDef" ${cur ? "" : "disabled"}>Back to default</button>`)
+      : mpCtx(mpHint("", "Click a city on the map, then give it to a side."));
   } else if (sel) {
-    body = `<b>${esc(sel.name)}</b><span class="muted">${plural(sel.pts.length, "point")}. Drag a round point to move it, a small one to bend the line. ${mpVx != null ? "Remove point, or double-click it, deletes the chosen point." : "Click a point to choose it."}</span>
-      ${seg("mapZone", mpClosed(mpGeo(t), sel) ? [["", "Off"], ["w", "Blue inside"], ["e", "Red inside"]] : [["", "Off"], ["w", "Blue in the west"], ["e", "Blue in the east"]], sel.zone || "", "z")}<span class="mp-act"><button class="btn sm" data-a="mapRename">Rename</button><button class="btn sm" data-a="mapSimplify">Fewer points</button><button class="btn sm" data-a="mapDelPt" ${mpVx != null && sel.pts.length > 2 ? "" : "disabled"}>Remove point</button><button class="btn sm danger" data-a="mapDelLine">Delete line</button></span>`;
-  } else body = `<span class="muted">${L.length ? "Click a line to move or bend it, or choose Draw a line to add one." : "No battle lines yet. Choose Draw a line to add the first one."}</span>`;
-  return `<section class="panel mp-card mp-bar"><div class="mp-bar-top">${tools}<div class="mp-bar-b">${body}</div></div><div class="mp-bar-lines"><span class="mp-bar-k">Battle lines</span><div class="mp-chips">${mpChips(L, "mapLine", mpSel) || '<span class="muted">None yet</span>'}</div><button class="btn sm plain" data-a="mapReset">Restore defaults</button></div></section>`;
+    const zone = seg("mapZone", mpClosed(mpGeo(t), sel) ? [["", "Off"], ["w", "Blue inside"], ["e", "Red inside"]] : [["", "Off"], ["w", "Blue west"], ["e", "Blue east"]], sel.zone || "", "z");
+    ctx = mpCtx(mpHint(`${esc(sel.name)} <em class="mp-n">${plural(sel.pts.length, "point")}</em>`, mpVx != null ? "Point chosen. Remove it, or double-click it." : "Drag a round point to move it, a small one to bend the line."),
+      `${mpLbl("Zone")}${zone}<i class="mp-sep"></i><button class="btn sm" data-a="mapRename">Rename</button><button class="btn sm" data-a="mapSimplify">Fewer points</button><button class="btn sm" data-a="mapDelPt" ${mpVx != null && sel.pts.length > 2 ? "" : "disabled"}>Remove point</button><button class="btn sm danger" data-a="mapDelLine">Delete line</button>`);
+  } else ctx = mpCtx(mpHint("", L.length ? "Click a line to move or bend it, or pick one below." : "No battle lines yet. Draw the first one."));
+  const chips = mpChips(L, "mapLine", mpTool === "draw" ? null : mpSel) + (mpTool === "draw" ? "" : `<button class="mp-chip mp-add" data-a="mapTool" data-t="draw">+ New line</button>`);
+  return `<section class="panel mp-card mp-bar"><div class="mp-bar-top">${tools}<button class="btn sm plain" data-a="mapReset">Restore defaults</button></div>${ctx}<div class="mp-bar-lines"><span class="mp-bar-k">Battle lines</span><div class="mp-chips">${chips}</div></div></section>`;
 }
 
 const MAPA = {
@@ -368,6 +375,11 @@ const mpSetView = svg => { svg.setAttribute("viewBox", MPV.x + " " + MPV.y + " "
       if (h.classList.contains("vm")) { const g = mpGeo(S.topic), a = mpXY(g, l.pts[i][0], l.pts[i][1]), b = mpXY(g, l.pts[i + 1][0], l.pts[i + 1][1]); l.pts.splice(i + 1, 0, mpLL(g, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2)); i += 1; mpVx = i; mpRedrawLines(); }
       mpDrag = { id: l.id, i, x: e.clientX, y: e.clientY, moved: false, s, added: h.classList.contains("vm") }; e.preventDefault(); return;
     }
+    const pd = e.target.closest(".pt-i, .pt-rh");   /* a weak / fortified point: drag it to move it, drag the ring handle to resize it */
+    if (pd && ROLE !== "delegate" && mpTool === "pts" && !mpPtNew) {
+      const q = (PTS[S.topic] || []).find(x => x.id === (pd.dataset.id)); if (!q) return;
+      mpPD = { id: q.id, mode: pd.classList.contains("pt-rh") ? "r" : "m", x: e.clientX, y: e.clientY, moved: false, s }; e.preventDefault(); return;
+    }
     if (ROLE !== "delegate" && e.target.closest(".trp")) return;   /* a troop is dragged on its own, the map stays put */
     const ph = e.target.closest(".ln-hit");   /* take hold of a line anywhere: one new point appears under your finger and goes where you drag it */
     if (ph && ROLE !== "delegate" && mpTool === "edit") {
@@ -383,7 +395,14 @@ const mpSetView = svg => { svg.setAttribute("viewBox", MPV.x + " " + MPV.y + " "
     pan = { x: e.clientX, y: e.clientY, vx: MPV.x, vy: MPV.y, s, moved: false };
   });
   document.addEventListener("pointermove", e => {
-    if ((mpDrag || pan) && e.pointerType === "mouse" && e.buttons === 0) { end(); return; }   /* the button was let go somewhere we were not told about: stop dragging instead of following the mouse around */
+    if ((mpDrag || mpPD || pan) && e.pointerType === "mouse" && e.buttons === 0) { end(); return; }   /* the button was let go somewhere we were not told about: stop dragging instead of following the mouse around */
+    if (mpPD) {
+      if (!mpPD.moved && Math.hypot(e.clientX - mpPD.x, e.clientY - mpPD.y) < 3) return; mpPD.moved = true; mpDragged = true;
+      const q = (PTS[S.topic] || []).find(x => x.id === mpPD.id); if (!q) return; const g = mpGeo(S.topic), P = toSvg(mpPD.s, e);
+      if (mpPD.mode === "m") { const ll = mpLL(g, P.x, P.y); q.lat = ll[0]; q.lon = ll[1]; }
+      else { const c = mpXY(g, q.lat, q.lon); q.r = Math.max(5, Math.min(1000, Math.round(Math.hypot(P.x - c[0], P.y - c[1]) / g.sc * PT_KM))); }
+      mpPt = q.id; mpPointsRedraw(); return;
+    }
     if (mpDrag) {
       if (!mpDrag.moved && Math.hypot(e.clientX - mpDrag.x, e.clientY - mpDrag.y) < 3) return; mpDrag.moved = true; mpDragged = true;
       const l = LN[S.topic].find(x => x.id === mpDrag.id); if (!l) return; const q = toSvg(mpDrag.s, e);
@@ -398,7 +417,7 @@ const mpSetView = svg => { svg.setAttribute("viewBox", MPV.x + " " + MPV.y + " "
     if (!pan.moved && Math.hypot(dx, dy) < mpSlop(e)) return; pan.moved = true; mpDragged = true;
     const k = MPV.w / pan.s.getBoundingClientRect().width; MPV.x = pan.vx - dx * k; MPV.y = pan.vy - dy * k; mpClampView(); mpSetView(pan.s);
   });
-  const end = () => { const d = mpDrag; mpDrag = null; pan = null; mpPressed = 0; if (d && (d.moved || d.added)) { if (d.added) mpDragged = true; render(); mpSave(); } setTimeout(() => { mpDragged = false; }, 0); };
+  const end = () => { const pd = mpPD; mpPD = null; if (pd && pd.moved) { mpPt = pd.id; mpPtNew = null; mpDragged = true; render(); mpPtSave(); } const d = mpDrag; mpDrag = null; pan = null; mpPressed = 0; if (d && (d.moved || d.added)) { if (d.added) mpDragged = true; render(); mpSave(); } setTimeout(() => { mpDragged = false; }, 0); };
   window.addEventListener("resize", () => mpLabelsSoon(document.querySelector(".mapsvg")));
   document.addEventListener("pointerup", end); document.addEventListener("pointercancel", end); window.addEventListener("blur", end);
   document.addEventListener("click", e => { if (mpDragged) { e.stopPropagation(); e.preventDefault(); mpDragged = false; } }, true);
@@ -408,5 +427,5 @@ const mpSetView = svg => { svg.setAttribute("viewBox", MPV.x + " " + MPV.y + " "
     const b = s.getBoundingClientRect(), z = e.deltaY < 0 ? 1.15 : 0.87, px = MPV.x + (e.clientX - b.left) / b.width * MPV.w, py = MPV.y + (e.clientY - b.top) / b.height * MPV.h;
     MPV.w /= z; MPV.h /= z; MPV.x = px - (e.clientX - b.left) / b.width * MPV.w; MPV.y = py - (e.clientY - b.top) / b.height * MPV.h; mpClampView(); mpSetView(s);
   }, { passive: false });
-  setInterval(() => { if (typeof UI !== "undefined" && UI.page === "map" && !document.hidden && !mpDrag && !mpDraft.length && LN) mpLoadData(true); }, 15000);
+  setInterval(() => { if (typeof UI !== "undefined" && UI.page === "map" && !document.hidden && !mpDrag && !mpPD && !mpDraft.length && LN) mpLoadData(true); }, 15000);
 })();
