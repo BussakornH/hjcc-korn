@@ -632,6 +632,7 @@ let moraleBusy = 0;
 const showMorale = () => D().rules.useMorale && !(DEL && MORALE_NA[S.topic]);
 function setMorale(s, raw) {
   if (ROLE !== "chair") { deny(); render(); return; }
+  if (typeof raw === "string" && !raw.trim()) { render(); return; }   /* an emptied field is not 0%: keep the figure */
   const d = D(), v = clamp(r2(num(raw, 50)), 0, 100), o = d.sides[s].morale; if (v === o) { render(); return; }
   d.sides[s].morale = v; addLog(d, `Morale (${sideLbl(s)}): ${fx(o)}% → ${fx(v)}%`, "rules"); save(); render();
   moraleBusy++;

@@ -225,14 +225,16 @@ async function updateKv(k, fn, tries) {
   throw Object.assign(new Error("busy"), { status: 503, error: "busy" });
 }
 const tooBig = () => Object.assign(new Error("payload too large"), { status: 413, error: "too-large" });
+/* Every route reads fields off the result, so anything that is not a JSON object (null, a number, a string, an array) comes back as {}. */
+const asObj = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
 async function readJson(req, max) {
   max = max || MAX_BODY;
   if (Number(req.headers["content-length"]) > max) throw tooBig();   /* also covers Vercel, which hands us req.body already parsed */
-  if (req.body && typeof req.body === "object") return req.body;
-  if (typeof req.body === "string") { if (req.body.length > max) throw tooBig(); try { return JSON.parse(req.body); } catch (e) { return {}; } }
+  if (req.body && typeof req.body === "object") return asObj(req.body);
+  if (typeof req.body === "string") { if (req.body.length > max) throw tooBig(); try { return asObj(JSON.parse(req.body)); } catch (e) { return {}; } }
   let n = 0; const chunks = [];
   for await (const c of req) { n += c.length; if (n > max) throw tooBig(); chunks.push(c); }
-  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch (e) { return {}; }
+  try { return asObj(JSON.parse(Buffer.concat(chunks).toString("utf8"))); } catch (e) { return {}; }
 }
 function sameOrigin(req) {
   try { return new URL(req.headers.origin).host === req.headers.host; } catch (e) { return false; }
