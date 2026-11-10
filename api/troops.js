@@ -25,7 +25,7 @@ const clean = (v) => {
     if (!id || seen.has(id) || !name || lat === null || lon === null || hp === null || maxhp === null || !CODES.includes(x.code) || !AFF.includes(x.aff)) return null;
     seen.add(id);
     out.push({ id, uid: String(x.uid || "").replace(/[^A-Za-z0-9_:.-]/g, "").slice(0, 64), name, code: x.code, aff: x.aff, side: x.side === "foe" || x.side === "ne" ? x.side : "me",
-      lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000, hp, maxhp, atk: n(x.atk, 0, 1000) || 0, mov: n(x.mov, 0, 1000) || 0, rng: n(x.rng, 0, 1000) || 0, lost: !!x.lost });
+      lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000, hp: Math.min(hp, maxhp), maxhp, atk: n(x.atk, 0, 1000) || 0, mov: n(x.mov, 0, 1000) || 0, rng: n(x.rng, 0, 1000) || 0, lost: !!x.lost });
   }
   return out;
 };

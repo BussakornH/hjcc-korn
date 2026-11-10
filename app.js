@@ -12,7 +12,7 @@ const TOPICS = window.HJCC_TOPICS;
 const ROLE = (window.SentinelAuth && SentinelAuth.role()) || "delegate", RANK = { chair: 0, delegate: 1, admin: 2 };
 const DEL = ROLE === "delegate";   /* a delegate plays one side and never sees an enemy view */
 const atLeast = r => RANK[ROLE] >= RANK[r];
-const deny = () => toast(ROLE === "chair" ? "Chairs have view-only access." : "Only the Admin can do that.");
+const deny = () => toast(ROLE === "chair" ? "The delegates' forces are view only for chairs." : "Only the Admin can do that.");
 document.documentElement.dataset.role = ROLE;
 /* forces are kept per sign-in, so two people on one browser never see each other's units; the old shared copy goes to the first person who signs in after the change */
 const LEGACY_KEY = "hjcc-force-tracker-v1", KEY = LEGACY_KEY + ":" + String((window.SentinelAuth && SentinelAuth.user()) || "").toLowerCase().replace(/[^a-z0-9_.-]/g, "");
@@ -145,7 +145,7 @@ function load() { try { const o = JSON.parse(localStorage.getItem(KEY) || "null"
 let S = load() || fresh();
 try { const ct = sessionStorage.getItem("sentinel-topic"); if (ct && TOPICS[ct]) { S.topic = ct; if (ROLE === "admin") sessionStorage.removeItem("sentinel-topic"); } } catch (e) {}
 let lastSaved = null, saveErr = false;
-function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); lastSaved = Date.now(); saveErr = false; } catch (e) { saveErr = true; } renderSave();  if (typeof mpForcesPush === "function") mpForcesPush(); }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); lastSaved = Date.now(); saveErr = false; } catch (e) { saveErr = true; } renderSave();  if (typeof mpForcesPush === "function") mpForcesPush(); if (typeof rulesPush === "function") rulesPush(); }
 
 /* per-device view state: which page, filters, battle selection, theme */
 const UI = Object.assign({ page: "overview", ovSide: "me", ovMetric: "hp", boardSide: "me", q: "", br: "", rosterSide: "me", open: {}, fold: {}, sel: { att: [], def: [] }, attSide: "me", cm: { att: null, def: null }, mult: 1, bonus: 0, arty: false, theme: null, steps: true, tv: { atk: 20, morale: 60, hp: 30 } }, (() => { try { return JSON.parse(localStorage.getItem(UIKEY) || "{}") || {}; } catch (e) { return {}; } })());
@@ -172,6 +172,8 @@ const tierOf = u => lost(u) ? "lost" : tierKey(strOf(u));
 const TIER_ORDER = { full: 0, good: 1, fair: 2, weak: 3, crit: 4, lost: 5 };
 const byStr = (a, b) => (TIER_ORDER[tierOf(a)] - TIER_ORDER[tierOf(b)]) || (strOf(b) - strOf(a));
 
+/* the most a unit's stats can be; the server keeps the same limits on the copies it stores, so a bigger figure here would show differently to the chairs */
+const STAT_MAX = 1000, HP_MAX = 100000;
 /* ---------- change pipeline ---------- */
 const UNDO = [];
 function act(msg, fn, kind = "edit") {
@@ -278,6 +280,12 @@ function compile(src) {
   return f;
 }
 const STD = compile(STD_EXPR);
+/* A formula can be well formed and still be no use: "atk / 0" works out to 0 (dividing by zero counts as 0 here), so every attack would do nothing.
+   Try it on an ordinary attack and say so; it is a warning, the formula is still used as written. */
+function exprWarn(f) {
+  let v; try { v = f({ atk: 20, base: 20, morale: 60, mult: 1, bonus: 0, hp: 30, maxhp: 30, n: 1, m: 1, datk: 10, str: 100 }); } catch (e) { v = NaN; }
+  return Number.isFinite(v) && v > 0 ? "" : " Careful: for an ordinary attack (ATK 20, morale 60%) it gives no damage.";
+}
 const FCACHE = { src: null, f: null, err: null };
 function formula(R) { if (FCACHE.src !== R.expr) { FCACHE.src = R.expr; try { FCACHE.f = compile(R.expr); FCACHE.err = null; } catch (e) { FCACHE.f = null; FCACHE.err = e.message; } } return FCACHE; }
 const exprVars = expr => { const s = new Set(); String(expr).replace(/[A-Za-z_]\w*/g, w => { const k = w.toLowerCase(); if (VARS.some(v => v[0] === k)) s.add(k); return w; }); return [...s]; };
@@ -428,8 +436,8 @@ function lockPage() {
   let msg = "";
   if (UI.page === "rules" && ROLE === "delegate") {
     Array.prototype.forEach.call(pg.children, c => c.setAttribute("inert", ""));
-    msg = "<b>View only.</b> Only the Admin can edit the rules and formulas. You can read them here and use them in the combat calculator.";
-  } else if (ROLE === "chair" && UI.page !== "rules" && UI.page !== "combat" && UI.page !== "sides" && UI.page !== "map" && UI.page !== "morale") msg = "<b>View only.</b> Chairs can see everything in the tracker but cannot change it.";
+    msg = "<b>View only.</b> Only the Admin and the chairs can edit the rules and formulas. You can read them here and use them in the combat calculator.";
+  } else if (ROLE === "chair" && UI.page !== "rules" && UI.page !== "combat" && UI.page !== "sides" && UI.page !== "map" && UI.page !== "morale") msg = "<b>View only.</b> The forces belong to the delegates: chairs can see them here but not change them. The map, morale, sides, rules and combat calculator are yours.";
   if (msg) pg.insertAdjacentHTML("afterbegin", '<div class="lockbar" role="note">' + msg + "</div>");
   pg.querySelectorAll("[data-need]").forEach(b => { if (ROLE !== "admin") { b.disabled = true; b.classList.add("locked"); b.title = "Admin access needed"; } });
   lockEdits(document);
@@ -437,14 +445,14 @@ function lockPage() {
 function accessPanel() {
   const cols = ["delegate", "chair", "admin"], rows = [
     ["See forces, order of battle, battle overview and charts", [1, 1, 0]],
-    ["Use the combat calculator and export a backup", [1, 1, 0]],
+    ["Use the combat calculator", [0, 1, 0]],
     ["Add, edit and move units; apply battle results; set allocation and fronts", [1, 0, 0]],
-    ["Set the morale of each side", [0, 1, 0]],
+    ["Set morale and sides by day; draw the battle map and place troops", [0, 1, 0]],
     ["Edit rules, formulas, classes and sub classes", [0, 1, 1]],
     ["Create, reset and remove accounts", [0, 0, 1]]
   ], cap = x => x[0].toUpperCase() + x.slice(1);
   const tbl = `<table class="rtbl acc"><thead><tr><th>What you can do</th>${cols.map(c => `<th class="${c === ROLE ? "me" : ""}">${cap(c)}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr><td>${r[0]}</td>${cols.map((c, i) => `<td class="${c === ROLE ? "me" : ""}">${r[1][i] ? "Yes" : "&mdash;"}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
-  return `<section class="panel"><div class="panel-h"><div><h3>${ROLE === "admin" ? "Access levels" : "Your access: " + cap(ROLE)}</h3><p>The Admin runs the committee and does not command a side. Delegates use the tracker as normal users. Chairs can view the tracker and edit the rules and formulas.</p></div></div>${tbl}</section>`;
+  return `<section class="panel"><div class="panel-h"><div><h3>${ROLE === "admin" ? "Access levels" : "Your access: " + cap(ROLE)}</h3><p>The Admin runs the committee and does not command a side. Delegates use the tracker as normal users. Chairs see every side's forces and run the map, morale, sides, rules and combat calculator. Rules and formulas are shared: a change by the Admin or a chair reaches every screen.</p></div></div>${tbl}</section>`;
 }
 
 /* ---------- ADMIN: control panel ---------- */
@@ -598,7 +606,7 @@ function chrome() {
   $("topics").innerHTML = Object.values(TOPICS).map(T => `<button class="topic ${S.topic === T.id ? "on" : ""}" data-a="topic" data-t="${T.id}" aria-pressed="${S.topic === T.id}"><span class="eyebrow">Topic ${T.num}</span><b>${esc(T.title)}</b><small>${T.year}</small></button>`).join("");
   const ct = { forces: d.units.filter(u => u.side === "me" && !lost(u)).length, combat: sl.A.length + sl.D.length };
   $("nav").innerHTML = pages().map(p => `<button class="nav-i ${p.id === UI.page ? "on" : ""}" data-a="go" data-p="${p.id}" ${p.id === UI.page ? 'aria-current="page"' : ""}>${ico(p.icon)}<span>${p.name}</span>${ct[p.id] ? `<span class="ct">${ct[p.id]}</span>` : ""}</button>`).join("");
-  if (ROLE === "chair") $("footNote").innerHTML = "SENTINEL Joint Operations Center &middot; Historical Joint Crisis Committee simulation. Forces are reported by the delegates; morale and every outcome are set by the chairs. Data is kept in this browser only.";
+  if (ROLE === "chair") $("footNote").innerHTML = "SENTINEL Joint Operations Center &middot; Historical Joint Crisis Committee simulation. Forces are reported by the delegates; morale and every outcome are set by the chairs. The map, morale, sides and rules are shared with every screen.";
   $("sideFoot").innerHTML = `${DEL ? `<div class="eyebrow">Allocation</div><div><b>${d.alloc.delegation ? esc(d.alloc.delegation) : "Pending"}</b>${d.alloc.portfolio ? ` · ${esc(d.alloc.portfolio)}` : ""}</div>` : ""}${DEL ? "" : `<div>${esc(sideLbl("me"))} <span class="muted">v</span> ${esc(sideLbl("foe"))}</div>`}<div class="sf-n">${DEL ? "Your own running figures. The chairs decide every outcome." : "Forces are reported by the delegates. Morale and every outcome are set by the chairs."}</div>`;
   $("pageTitle").textContent = P.name; $("pageSub").textContent = acctLbl();
   $("undoBtn").disabled = !UNDO.length;
@@ -637,6 +645,58 @@ function setMorale(s, raw) {
   d.sides[s].morale = v; addLog(d, `Morale (${sideLbl(s)}): ${fx(o)}% → ${fx(v)}%`, "rules"); save(); render();
   moraleBusy++;
   SentinelAuth.api("POST", "/api/morale", { topic: S.topic, side: s, value: v }).then(r => { if (!r.ok) throw 0; }).catch(() => { toast("Could not save the morale, try again"); }).then(() => { moraleBusy--; loadMorale(); });
+}
+/* ---------- shared rules ----------
+   The rules of each topic (formula, switches, tables, directives) live on the server (api/rules.js) so the Admin's and the chairs' edits reach every calculator.
+   Every device keeps its copy in S as before and the pages read that. RSYNC is the copy as the server last had it; when S differs, an Admin or chair device sends it.
+   A save carries the version it was based on, so a device that slept through someone else's change gets the new rules back instead of putting old ones in their place. */
+const RVER = { t1: null, t2: null }, RSYNC = {}, RTOPICS = ["t1", "t2"]; let rulesOk = false, rulesT = 0, rulesBusy = false, rulesFail = false;
+const rulesJson = t => JSON.stringify(S.topics[t].rules);
+function rulesAdopt(t, rules) {
+  const d = S.topics[t], next = Object.assign(defaultRules(), rules), ch = JSON.stringify(next) !== JSON.stringify(d.rules);
+  d.rules = next; RSYNC[t] = rulesJson(t);
+  /* Undo puts a whole earlier state back. Without this, undoing an HP change made before the new rules arrived would bring the old rules back with it, and send them. */
+  if (ch) for (let i = 0; i < UNDO.length; i++) { try { const o = JSON.parse(UNDO[i]); if (o.topics && o.topics[t]) { o.topics[t].rules = next; UNDO[i] = JSON.stringify(o); } } catch (e) { /* leave that step as it is */ } }
+  return ch;
+}
+function loadRules() {
+  if (rulesBusy || rulesT) return Promise.resolve();   /* a save is on its way: its answer brings the rules */
+  return SentinelAuth.api("GET", "/api/rules").then(r => r.ok ? r.json() : null).then(j => {
+    if (!j || !j.ver || rulesBusy || rulesT) return;
+    if (rulesOk && UI.page === "rules" && document.querySelector("#page :focus")) return;   /* someone is typing in a rule: do not change the page under them, the next look picks it up */
+    const first = !rulesOk; let ch = false;
+    RTOPICS.forEach(t => {
+      if (!S.topics[t] || (!first && RSYNC[t] !== rulesJson(t))) return;   /* an edit made here has not been sent yet */
+      if (j[t]) { if (first || RVER[t] !== j.ver[t]) ch = rulesAdopt(t, j[t]) || ch; }
+      /* Nobody has saved rules for this topic yet. Until now the chairs' own rules were the ones every battle used, so a chair's device hands its rules in
+         (if it changed any); everyone else waits for the first edit. */
+      else if (first) RSYNC[t] = ROLE === "chair" && rulesJson(t) !== JSON.stringify(defaultRules()) ? "" : rulesJson(t);
+      RVER[t] = j.ver[t];
+    });
+    rulesOk = true;
+    if (ch) { save(); if (!dragging() && !document.querySelector("#page :focus")) render(); } else rulesPush();
+  }, () => {});
+}
+function rulesPush() {
+  if (!rulesOk || (ROLE !== "admin" && ROLE !== "chair") || !RTOPICS.some(t => S.topics[t] && RSYNC[t] !== rulesJson(t))) return;
+  clearTimeout(rulesT); rulesT = setTimeout(rulesFlush, 500);
+}
+async function rulesFlush() {
+  rulesT = 0; if (rulesBusy) { rulesT = setTimeout(rulesFlush, 300); return; }
+  rulesBusy = true; let took = false, tidy = false;
+  try {
+    for (const t of RTOPICS) {
+      for (let n = 0; S.topics[t] && RSYNC[t] !== rulesJson(t); n++) {
+        const sent = rulesJson(t), r = await SentinelAuth.api("POST", "/api/rules", { topic: t, rules: S.topics[t].rules, base: RVER[t] || "0" }), j = await r.json().catch(() => null);
+        if (r.ok && j && j.ver) { RVER[t] = j.ver; if (rulesJson(t) === sent) { rulesAdopt(t, j.rules); tidy = true; } else RSYNC[t] = sent; rulesFail = false; continue; }   /* edited again while it was on its way: goes round once more */
+        if (r.status === 409 && j && j.error === "stale") { RVER[t] = j.ver; if (j.rules) { rulesAdopt(t, j.rules); took = true; break; } if (n < 2) continue; }
+        throw new Error("rules");
+      }
+    }
+  } catch (e) { if (!rulesFail) toast("Could not save the rules. They are kept on this device and will be sent again"); rulesFail = true; }
+  rulesBusy = false;
+  if (took) { save(); render(); toast("The rules were changed on another screen just now. Yours were not saved: check them and make your change again"); }
+  else if (tidy) save();
 }
 function loadMorale() {
   if (ROLE === "admin") return Promise.resolve();
@@ -1046,7 +1106,7 @@ function pgRules() {
   const fbox = `<div class="presets">${Object.entries(FORMULAS).map(([k, f]) => `<button class="preset ${R.expr.replace(/\s+/g, "") === f.expr.replace(/\s+/g, "") ? "on" : ""}" data-a="preset" data-f="${k}"><b>${f.name}</b><small>${f.desc}</small><code>${f.expr}</code></button>`).join("")}</div>
     <label class="lbl" for="expr">Formula (edit freely, press Enter or click away to save)</label>
     <input id="expr" class="expr mono" value="${esc(R.expr)}" data-c="expr" data-i="exprLive" spellcheck="false" autocomplete="off">
-    <div id="exprMsg" class="expr-msg ${F.err ? "bad" : "ok"}">${F.err ? "Problem: " + esc(F.err) + ". The standard formula is used until this is fixed." : "Formula is valid."}</div>
+    <div id="exprMsg" class="expr-msg ${F.err ? "bad" : "ok"}">${F.err ? "Problem: " + esc(F.err) + ". The standard formula is used until this is fixed." : "Formula is valid." + exprWarn(F.f)}</div>
     <div class="terms">${term("useMorale", "Morale", "When off, morale counts as 100%, so it drops out of the damage. Use this when the chairs take morale out of combat.")}${term("useMult", "Situational multiplier", "A ×-value you set per battle (terrain, fortification, surprise). When off it is 1.")}${term("useBonus", "Flat bonus damage", "A number you add per battle. When off it is 0.")}</div>
     <details class="vars"><summary>Names and functions you can use</summary><table>${VARS.map(([k, t]) => `<tr><td><code>${k}</code></td><td>${t}</td></tr>`).join("")}</table><p>Functions: min(a, b), max(a, b), round(x), floor(x), ceil(x), abs(x), sqrt(x), pow(a, b), clamp(x, lo, hi), if(test, a, b). Compare with &gt; &lt; &gt;= &lt;= == != (true counts as 1). Dividing by 0 gives 0.</p></details>
     <div class="trial"><label>atk<input class="n" type="number" step="any" value="${fx(UI.tv.atk)}" data-i="tv" data-k="atk" id="tv-atk"></label><label>morale %<input class="n" type="number" step="any" value="${fx(UI.tv.morale)}" data-i="tv" data-k="morale" id="tv-morale" ${R.useMorale ? "" : "disabled"}></label><label>defenders' hp<input class="n" type="number" step="any" value="${fx(UI.tv.hp)}" data-i="tv" data-k="hp" id="tv-hp"></label><div class="out" id="trialOut">${trialText()}</div></div>`;
@@ -1165,7 +1225,7 @@ function addHint() {
 function submitAdd() {
   const d = D(), side = (document.querySelector('input[name="adSide"]:checked') || {}).value || "me", t = d.types.find(x => x.id === $("adType").value);
   const q = clamp(Math.round(num($("adQty").value, 1)), 1, 60), front = $("adFront").value || "reserve", base = ($("adName").value.trim() || (t ? t.name : "Unit")).slice(0, 50), exact = q === 1 && $("adName").dataset.t === "1";
-  const st = { atk: Math.max(0, num($("adAtk").value)), maxhp: Math.max(0, num($("adHp").value)), mov: Math.max(0, num($("adMov").value)), rng: Math.max(0, num($("adRng").value)) };
+  const st = { atk: clamp(num($("adAtk").value), 0, STAT_MAX), maxhp: clamp(num($("adHp").value), 0, HP_MAX), mov: clamp(num($("adMov").value), 0, STAT_MAX), rng: clamp(num($("adRng").value), 0, STAT_MAX) };
   if (!(st.maxhp > 0)) { toast("Full HP must be more than 0"); $("adHp").focus(); return; }
   closeModal();
   act(`Added ${q} × ${base} (${sideLbl(side)}) to ${frontName(front)}`, dd => { let n = nextNum(dd, base); for (let i = 0; i < q; i++) dd.units.push(mkUnit(dd, { side, t, name: exact ? base : `${base} ${n++}`, front, hp: st.maxhp, ...st })); }, "add");
@@ -1392,7 +1452,7 @@ const C = {
   uf: el => {
     const id = UI.drawer, u = byId(id); if (!u) return;
     const k = el.dataset.k; let v = el.value;
-    if (["hp", "maxhp", "atk", "mov", "rng"].includes(k)) v = Math.max(0, r2(num(v, u[k])));
+    if (["hp", "maxhp", "atk", "mov", "rng"].includes(k)) v = clamp(r2(num(v, u[k])), 0, k === "hp" || k === "maxhp" ? HP_MAX : STAT_MAX);
     else if (k === "name") { v = v.trim().slice(0, 60); if (!v) { render(); return; } }
     if (k === "maxhp" && !(v > 0)) { toast("Full HP must be more than 0"); render(); return; }
     if (String(u[k] == null ? "" : u[k]) === String(v)) return;
@@ -1441,7 +1501,7 @@ const I = {
   pair: el => { const p = $(el.dataset.pair); if (p) p.value = el.value; },
   adQty: () => addHint(),
   adName: el => { el.dataset.t = "1"; addHint(); },
-  exprLive: el => { let err = null; try { compile(el.value); } catch (e) { err = e.message; } const m = $("exprMsg"); m.className = "expr-msg " + (err ? "bad" : "ok"); m.textContent = err ? `Problem: ${err}` : "Formula is valid. Press Enter or click away to save it."; },
+  exprLive: el => { let err = null, f = null; try { f = compile(el.value); } catch (e) { err = e.message; } const m = $("exprMsg"); m.className = "expr-msg " + (err ? "bad" : "ok"); m.textContent = err ? `Problem: ${err}` : "Formula is valid. Press Enter or click away to save it." + exprWarn(f); },
   tv: el => { UI.tv[el.dataset.k] = num(el.value); saveUI(); const o = $("trialOut"); if (o) o.innerHTML = trialText(); }
 };
 
@@ -1481,6 +1541,7 @@ reseed();
 render();
 if (ROLE === "delegate") loadAlloc();
 loadMorale(); setInterval(() => { if (!document.hidden) loadMorale(); }, 15000);
+loadRules(); setInterval(() => { if (!document.hidden) loadRules(); }, 15000);
 const beat = () => { if (!document.hidden) SentinelAuth.api("POST", "/api/status", { topic: S.topic, page: UI.page }).catch(() => {}); };
 beat(); setInterval(beat, 45000);
 setInterval(() => { if (UI.page === "status" && ROLE === "admin" && !document.hidden) loadStatus(); }, 5000);
