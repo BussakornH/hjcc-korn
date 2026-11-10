@@ -33,7 +33,10 @@ module.exports = [
     ["Place troops and draw battle lines", `${ref("map-place")} · ${ref("map-lines")}`],
     ["Work out and apply a battle", `${ref("calc")}`],
     ["Change how damage is calculated", `${ref("rules")}`],
-    ["Move a character to another side", `${ref("sides")}`]
+    ["Move a character to another side", `${ref("sides")}`],
+    ["Mark ground where troops are exposed or dug in", `${ref("map-points")} · ${ref("map-points-fx")}`],
+    ["Run a session, rule a battle, handle a defection", `${ref("pb-open")} · ${ref("pb-battle")} · ${ref("pb-side")}`],
+    ["See every key, limit and formula on one page", `${ref("cheat")}`]
   ], "box")}
   <p class="sm" style="margin-top:auto">Describes SENTINEL as of November 2026. If a screen looks different, the platform has been updated; the ideas stay the same.</p>`
 },
@@ -73,7 +76,7 @@ module.exports = [
     ["Add, edit and move units", `<span class="c">${Y}</span>`, N, N],
     ["Set each side’s morale", N, `<span class="c">${Y}</span>`, N],
     ["Use the combat calculator and apply results", N, `<span class="c">${Y}</span>`, N],
-    ["Place troops, draw battle lines, give cities to a side", N, `<span class="c">${Y}</span>`, N],
+    ["Place troops, draw battle lines, mark weak and fortified ground, give cities to a side", N, `<span class="c">${Y}</span>`, N],
     ["Edit rules, formulas, classes and sub classes", N, `<span class="c">${Y}</span>`, `<span class="c">${Y}</span>`],
     ["Move characters between sides each day", N, `<span class="c">${Y}</span>`, `<span class="c">${Y}</span>`],
     ["Create accounts, reset passwords, assign characters", N, N, `<span class="c">${Y}</span>`],
@@ -97,9 +100,9 @@ module.exports = [
   ${cols(2, [
     cd("1 · Watch the whole board", `<p>The ${ui("Overview")} and ${ui("Order of Battle")} pages show both sides’ strength, readiness and every unit. Delegates report; you verify.</p><p class="sm">Pages ${"{{p:ov}}"}–${"{{p:tray}}"}</p>`),
     cd("2 · Set morale", `<p>One figure per side, 0–100. It scales damage in combat and each delegate sees only their own side’s figure.</p><p class="sm">Pages ${"{{p:morale}}"}–${"{{p:morale-use}}"}</p>`),
-    cd("3 · Keep the map", `<p>Place troops, move them as orders are given, shape battle lines, and give cities to a side. Everyone sees your changes.</p><p class="sm">Pages ${"{{p:map}}"}–${"{{p:map-city}}"}</p>`),
+    cd("3 · Keep the map", `<p>Place troops, move them as orders are given, shape battle lines, give cities to a side and mark weak and fortified ground. Everyone sees your changes.</p><p class="sm">Pages ${"{{p:map}}"}–${"{{p:map-points-fx}}"}</p>`),
     cd("4 · Resolve combat", `<p>Tick attackers and defenders, read the estimate and the working, and press ${ui("Apply")} once you have ruled.</p><p class="sm">Pages ${"{{p:calc}}"}–${"{{p:calc-apply}}"}</p>`),
-    cd("5 · Own the rules", `<p>Switch rules on or off, edit the damage formula, results chart and unit stats, and add standing directives per side.</p><p class="sm">Pages ${"{{p:rules}}"}–${"{{p:rules-more}}"}</p>`),
+    cd("5 · Own the rules", `<p>Switch rules on or off, edit the damage formula, results chart and unit stats, and add standing directives per side. Rules are shared with every screen.</p><p class="sm">Pages ${"{{p:rules}}"}–${"{{p:rules-more}}"}</p>`),
     cd("6 · Assign sides by day", `<p>Characters can change sides as the crisis unfolds. Move them day by day; delegates see their own side change straight away.</p><p class="sm">Pages ${"{{p:sides}}"}–${"{{p:sides-run}}"}</p>`)
   ])}
   <h2>What stays with delegates and the administrator</h2>
@@ -120,14 +123,14 @@ module.exports = [
     cd("An account at chair level", `<p>Your administrator creates it and gives you a username and password. Passwords are at least 10 characters, and common ones are refused. One account per person: sign-in attempts are rate-limited, and the administrator can see who is online.</p>`),
     cd("A current web browser", `<p>A recent version of Chrome, Edge, Safari or Firefox on a laptop or desktop works best. The board and the map are designed for a screen at least 1280 pixels wide. Tablets work too: press and hold a card, then drag.</p>`),
     cd("An internet connection", `<p>Sign-in, morale, sides by day, the map, troops and delegates’ forces are all kept on the server, so SENTINEL needs a connection while you work.</p>`),
-    cd("Browser storage switched on", `<p>Your rules, battle record and display preferences are stored in this browser. If storage is blocked or full, the page shows <i>“Not saved: browser storage is blocked or full.”</i></p>`)
+    cd("Browser storage switched on", `<p>Your activity log, battle record, strength history, sub class stats and display preferences are kept in this browser. If storage is blocked or full, the page shows <i>“Not saved: browser storage is blocked or full.”</i> (Rules, morale, sides and the map are kept on the server.)</p>`)
   ])}
   <h2>Before the first session</h2>
   <ul class="chk">
     <li>Confirm with the administrator that every delegate has an account <b>and a character</b> for the topic you will run.</li>
-    <li>Sign in once and open every page in your menu so you know where things are (${ref("sidebar")}).</li>
+    <li>Sign in once and open every page in your menu so you know where things are (${ref("sidebar")}). Skim the playbook (${ref("pb-open")}) before your first live session.</li>
     <li>Review ${ui("Rules &amp; Formulas")}. The defaults are placeholders until your committee’s booklet says otherwise (${ref("rules")}).</li>
-    <li>Agree with your co-chairs which device holds the rules. Rules are stored per browser (${ref("data")}).</li>
+    <li>Agree with your co-chairs who edits the rules and the battle lines. Rules are shared, and lines are saved as a whole list, so two people editing at once can undo each other (${ref("data")}).</li>
     <li>Decide who starts on which side on Day 1, and adjust ${ui("Sides by day")} if needed (${ref("sides")}).</li>
     <li>Choose Day or Night mode. Night mode is easier on the eyes in a dim committee room (${ref("topbar")}).</li>
   </ul>
@@ -244,7 +247,7 @@ module.exports = [
   ${cols(3, [
     cd("The menu folds", `<p>The sidebar folds away after you open a page to give the content room. Press ${ui("☰")} to bring it back; ${kbd("Esc")} closes it.</p>`),
     cd("Pages remember", `<p>Collapsed panels, the side you were viewing and Day / Night are remembered on this device.</p>`),
-    cd("Pages update", `<p>Morale, the map and the delegates’ forces refresh by themselves: morale every 15 seconds, the map as it changes.</p>`)
+    cd("Pages update", `<p>Morale, rules, the map and the delegates’ forces refresh by themselves: morale and rules every 15 seconds, the map as it changes.</p>`)
   ])}
   ${note("Read the footer", "The line at the bottom of each page reminds everyone: <i>“Forces are reported by the delegates; morale and every outcome are set by the chairs.”</i>")}`
 },

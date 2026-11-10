@@ -93,7 +93,7 @@ module.exports = [
       <ul class="chk">
         <li>Note any rule changes made in the session.</li>
         <li>Press <b>Sign out</b> on shared computers.</li>
-        <li>Remember: the activity log, charts and rules stay in this browser.</li>
+        <li>Remember: the activity log, battle record, strength charts and sub class stats stay in this browser. Rules, morale, sides and the map are on the server.</li>
       </ul>
     </div>
   </div>
@@ -109,26 +109,26 @@ module.exports = [
     ["Morale, per side and topic", "Server", "Chairs set it; delegates see their own side’s"],
     ["Sides by day", "Server", "Chairs and administrators set it; delegates see their own"],
     ["Troops on the map", "Server", "Everyone"],
-    ["Battle lines and city sides", "Server", "Everyone"],
+    ["Battle lines, city sides, weak and fortified points", "Server", "Everyone"],
     ["Accounts, passwords, characters", "Server (passwords stored hashed)", "Administrator"],
-    ["<b>Rules, formulas, sub classes</b>", "<b>This browser</b>", "You"],
-    ["<b>Activity log, battle record, strength history</b>", "<b>This browser</b>", "You"],
+    ["<b>Rules: formula, switches, strength and results tables, directives</b>", "Server (shared per topic)", "Everyone; chairs and administrators edit"],
+    ["<b>Sub class stats</b>, activity log, battle record, strength history", "<b>This browser</b>", "You"],
     ["Collapsed panels, side, Day / Night", "This browser", "You"],
     ["Your sign-in", "This browser tab, 12 hours", "You"]
   ], "box")}
   <h2>What that means</h2>
   <ul>
-    <li><b>Switching device starts a fresh set of rules and charts.</b> The shared things (morale, sides, map) come with you. The rest do not.</li>
-    <li><b>Clearing site data or using a private window</b> loses your rules, log and battle record. Morale, sides and map are safe on the server.</li>
-    <li>Data is kept <b>per sign-in</b>: two chairs on one browser never see each other’s rules or record.</li>
-    <li>Two co-chairs each hold their own rules. Set the same values on both, or agree that one of you runs the calculator.</li>
+    <li><b>Switching device keeps your rules but starts a fresh log and charts.</b> The shared things (rules, morale, sides, map) come with you. The activity log, battle record, strength history and sub class stats do not.</li>
+    <li><b>Clearing site data or using a private window</b> loses your log, battle record, strength history and sub class stats. Rules, morale, sides and map are safe on the server.</li>
+    <li>The browser’s data is kept <b>per sign-in</b>: two chairs on one browser never see each other’s log or record.</li>
+    <li>Two co-chairs share one set of rules. If you both edit at once, the second save is refused and you are told to check and repeat it. Agree who edits.</li>
     <li>If a delegate’s device is new and empty, it does not wipe the units you can see.</li>
   </ul>
   <div class="g2">
     ${cd("Passwords and sessions", `<p>Passwords are checked on the server and never stored in readable form. A sign-in token lasts 12 hours, lives in the browser tab, and stops working if the password is reset.</p>`, "w")}
     ${cd("Who can see what you do", `<p>The administrator’s System status page lists who is online, with their topic and page, using a heartbeat sent every 45 seconds while a page is open.</p>`, "w")}
   </div>
-  ${warn("If saving fails", "A red <i>“Not saved: browser storage is blocked or full”</i> means your rules and log are not being kept. Free up space or allow storage for this site before you carry on.")}`
+  ${warn("If saving fails", "A red <i>“Not saved: browser storage is blocked or full”</i> means your log and battle record are not being kept. Free up space or allow storage for this site before you carry on.")}`
 },
 
 /* 49 */
@@ -143,6 +143,8 @@ module.exports = [
       <div class="q"><h3>A delegate says their morale looks wrong.</h3><p>They only see their own side’s figure, refreshed every 15 seconds. If they are on no side today they see none.</p></div>
       <div class="q"><h3>The map isn’t updating.</h3><p>Switch page and back, or reload. You will see <i>“Could not save …, try again”</i> if a save failed ([[map-city]]).</p></div>
       <div class="q"><h3>The strength chart is empty or short.</h3><p>History lives in this browser. A new device or cleared site data starts a new chart ([[data]]).</p></div>
+      <div class="q"><h3>My rule change vanished.</h3><p>Someone saved a change to the same topic first, and SENTINEL kept theirs. Read the rules again and repeat your edit ([[rules]]).</p></div>
+      <div class="q"><h3>Weak or fortified ground did nothing.</h3><p>The unit must be placed on the map with its marker inside the ring, and it must have lost HP in that step ([[map-points-fx]]).</p></div>
     </div>
     <div>
       <div class="q"><h3>I applied a battle by mistake.</h3><p>Press <b>Undo</b> or <kbd>Ctrl</kbd> <kbd>Z</kbd> straight away ([[calc-apply]]).</p></div>
@@ -186,6 +188,8 @@ module.exports = [
       <dt>Reserve</dt><dd>Units raised but not deployed.</dd>
       <dt>RNG</dt><dd>Range of a unit’s attack.</dd>
       <dt>Sub class</dt><dd>A kind of unit in a class: Infantry, Cavalry…</dd>
+      <dt>Weak point</dt><dd>A ring on the map: a unit inside it that is hit takes 2 more damage.</dd>
+      <dt>Fortified point</dt><dd>A ring on the map: a unit inside it that is hit takes 5 less.</dd>
       <dt>Zone</dt><dd>Tint on one side of a battle line.</dd>
     </dl>
   </div>
@@ -203,6 +207,7 @@ module.exports = [
       ${tbl(["Item", "Limit"], [
         ["Battle lines per map", "12"],
         ["Points per line", "120"],
+        ["Weak and fortified points per map", "60"],
         ["Troops on a map", "200"],
         ["Battle record kept", "300"]
       ], "box")}

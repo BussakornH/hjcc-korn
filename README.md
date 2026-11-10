@@ -50,9 +50,19 @@ at the same moment the second is told the rules changed and gets the new ones to
 so two chairs redrawing lines at the same moment can still overwrite each other.
 
 ## Chair's manual
-`manual/index.html` is the Chair's Manual (50 A4 pages), linked from the home page footer; `manual/sentinel-chair-manual.pdf` is the same thing as a PDF. Both are built from `manual/src/` (page text in `p1.js` to `p5.js`, design in `style.css`, screenshots in `manual/img/`):
+The Chair's Manual (A4 sheets, no page limit) comes in three looks, each as a web page and a PDF. The home page footer links to the first.
+
+| Style | Page | PDF |
+|---|---|---|
+| Clean (bright, Apple-like) | `manual/index.html` | `manual/sentinel-chair-manual.pdf` |
+| Field Manual (cream paper, serif, olive and rust) | `manual/field.html` | `manual/sentinel-chair-manual-field.pdf` |
+| Night Ops (dark console) | `manual/night.html` | `manual/sentinel-chair-manual-night.pdf` |
+
+A switcher in the manual's top bar moves between the styles. All three are built from the same text in `manual/src/` (`p1.js` to `p6.js`, helpers in `lib.js`, shared layout in `base.css`, one theme file per style, screenshots in `manual/img/`, self-hosted fonts in `manual/fonts/`).
 ```
-node manual/build.js     # writes manual/index.html and checks cross-references
-node manual/pdf.js       # prints it to manual/sentinel-chair-manual.pdf (needs Playwright); --check only reports pages that are too full
+node manual/build.js [clean|field|night]   # writes the pages; flows each topic onto as many A4 sheets as it needs
+node manual/pdf.js   [clean|field|night]   # prints the PDFs; --check only reports sheets that are too full
 ```
-The screenshots were taken from the running app (`npm run dev`) signed in as a chair. Retake them when a screen changes.
+Both need Playwright (`npm i -D playwright`, then `npx playwright install chromium`): the build measures every block in headless Chromium so a topic that outgrows one sheet carries on to the next, and figures shrink a little first when that saves a near-empty sheet. The build also stops on an unknown cross-reference (`[[page-id]]`). To add a topic, add an entry to one of the `p*.js` files (a new part name goes into `PARTS_ORDER` in `build.js`); to restyle, edit the theme CSS.
+
+The screenshots were taken from the running app (`npm run dev`) signed in as a chair. The Battle Map set (chair bar, weak and fortified points, lines, cities, troops) was retaken for version 2.0; the other screens are from version 1.0, so retake them when a screen changes.

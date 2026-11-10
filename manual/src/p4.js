@@ -170,7 +170,7 @@ module.exports = [
     ["6 · Spread and finish", "—", "How damage is shared; what happens at 0 HP.", "Focus fire"]
   ], "box")}
   <p>The other switches live inside those steps: <b>Morale</b>, <b>Situational multiplier</b> and <b>Flat bonus damage</b> in step 4, and <b>Counter-attack</b> and <b>Move units at 0 HP to Destroyed</b> in step 6. By default Morale, Multiplier and Move-to-Destroyed are on; Bonus and Counter-attack are off.</p>
-  ${warn("Rules live in your browser", "Changes apply at once to <i>your</i> Combat Calculator, cards and charts and are written to your activity log. They are stored in this browser and are <b>not</b> pushed to delegates’ browsers. If two chairs run a committee, set the same rules on both devices ([[data]]).")}
+  ${warn("Rules are shared, so edit them one at a time", "A rule change is saved to the server and reaches every screen within about 15 seconds. The Combat Calculator, cards and charts on every device use the same rules, and each change is written to your activity log. If someone else saved first, SENTINEL does not overwrite them: you see <i>“The rules were changed on another screen just now. Yours were not saved: check them and make your change again.”</i> Look at the rules and repeat your edit ([[data]]).")}
   ${note("Each topic has its own rules", "Rules belong to the topic. Setting them for Topic 1 does not change Topic 2. The default strength table follows the NTMUN II booklet; the results chart is a placeholder until your chairs publish theirs.")}`
 },
 

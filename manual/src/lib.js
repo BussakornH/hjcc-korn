@@ -20,11 +20,11 @@ const fig = (name, cap, o = {}) => {
     style = ` style="aspect-ratio:${(1 / (ar * hh / 100)).toFixed(4)}"`;
     inner = `<img class="win" src="img/${name}.jpg" alt="${esc(o.alt || plain(cap || name))}" style="top:${(-t / hh * 100).toFixed(3)}%;height:${(100 / hh * 100).toFixed(3)}%" decoding="async">` + (o.marks || []).map(m => mk(m, ((m[2] - t) / hh * 100).toFixed(2))).join("");
   } else {
-    style = o.h ? ` style="height:${o.h}"` : "";
+    style = o.h ? ` style="height:calc(${o.h} * var(--fig,1))"` : "";
     inner = `<img src="img/${name}.jpg" alt="${esc(o.alt || plain(cap || name))}"${style} loading="lazy" decoding="async">` + (o.marks || []).map(m => mk(m, m[2])).join("");
     style = "";
   }
-  return `<figure class="fig ${o.cls || ""}"${o.w ? ` style="max-width:${o.w}"` : ""}><div class="fig-i${o.win ? " has-win" : ""}"${style}>${inner}</div>${cap ? `<figcaption>${cap}</figcaption>` : ""}</figure>`;
+  return `<figure class="fig ${o.cls || ""}"${o.w ? ` style="max-width:calc(${o.w} * var(--fig,1))"` : ""}><div class="fig-i${o.win ? " has-win" : ""}"${style}>${inner}</div>${cap ? `<figcaption>${cap}</figcaption>` : ""}</figure>`;
 };
 const legend = items => `<ul class="legend">${items.map((t, i) => `<li><i>${i + 1}</i><span>${t}</span></li>`).join("")}</ul>`;
 const co = (kind, title, text) => `<div class="co ${kind}"><div>${title ? `<b class="t">${title}</b>` : ""}${text}</div></div>`;

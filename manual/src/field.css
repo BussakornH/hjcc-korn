@@ -1,0 +1,68 @@
+/* Field Manual: printed-manual look. Cream paper, Source Serif, mono labels, olive and rust. */
+:root{
+  --blue:#8f3b1e; --blue-d:#7a2f16; --ink:#24211a; --ink2:#4a443a; --ink3:#7b7364; --line:#bdb197; --hair:#d9cfb6;
+  --fill:#ece2c8; --paper:#f6efdc; --card:#fbf7ea; --green:#4d5a24; --green2:#6c7a35; --orange:#9a5a12; --red:#a3271b;
+  --tip:#4d5a24; --note:#7b7364; --warn:#a3271b; --on:#fbf7ea; --ring:rgba(246,239,220,.95); --keyline:#a89c80;
+  --desk:#cfc6ad; --bar:rgba(236,226,200,.92); --barline:rgba(60,50,30,.25);
+  --pb:#e2e0c6; --pr:#ecd3c6; --pg:#dfe3c1; --po:#ecdcb8;
+  --shadow:0 1px 2px rgba(50,40,20,.18),0 8px 26px rgba(50,40,20,.18);
+  --cover:#2f3a1c; --cover-art:linear-gradient(180deg,rgba(0,0,0,.0),rgba(0,0,0,.28)),repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 6mm),repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 1px,transparent 1px 6mm);
+  --sans:"Source Serif 4","Sentinel Sym","Sentinel Sym 2",Georgia,"Times New Roman",serif;
+  --display:"Source Serif 4","Sentinel Sym","Sentinel Sym 2",Georgia,"Times New Roman",serif;
+  --mono:"IBM Plex Mono","Sentinel Sym","Sentinel Sym 2",ui-monospace,Menlo,"DejaVu Sans Mono",monospace;
+  --fs:9.7pt; --lh:1.44; --btn-r:1mm; --mk:#8f3b1e;
+}
+body{font-variant-numeric:oldstyle-nums}
+.page:not(.cover)::after{content:"";position:absolute;inset:5.5mm;border:.5pt solid var(--line);pointer-events:none}
+.page>header.run,.page>footer.run{font:500 7pt var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);left:19mm;right:19mm}
+.page>header.run{top:9.5mm}.page>footer.run{bottom:9.5mm;border-top:.5pt solid var(--line)}
+.run .n{font-family:var(--mono);color:var(--ink)}
+.run svg{fill:var(--ink3)}
+.eyebrow{font:600 7.6pt var(--mono);letter-spacing:.16em;color:var(--blue)}
+h1{font:700 24pt/1.08 var(--display);letter-spacing:-.012em;border-bottom:1.6pt solid var(--ink);padding-bottom:2mm;margin-top:1.5mm}
+.lead{font-style:italic;color:var(--ink2);font-size:11pt;max-width:none}
+h2{font:700 12.2pt/1.2 var(--display);letter-spacing:0;text-transform:none;border-bottom:.5pt solid var(--line);padding-bottom:.8mm;margin-top:2mm}
+h3{font-weight:700;font-size:10.4pt}
+.cont{font:700 12.2pt/1.2 var(--display);letter-spacing:0}
+.ui{font-weight:600}
+b,strong{font-weight:700}
+code{font:500 8.4pt var(--mono);background:var(--fill);border:.5pt solid var(--line);border-radius:.4mm}
+kbd{font:600 7.6pt var(--mono);border-radius:.6mm;background:var(--card)}
+li::marker{color:var(--blue)}
+.fig .fig-i{border-radius:.6mm;border:.8pt solid var(--ink);box-shadow:1.2mm 1.2mm 0 rgba(36,33,26,.18)}
+.fig figcaption{font-style:italic;color:var(--ink2)}
+.mk{border-radius:.8mm;transform:translate(-50%,-50%) rotate(0)}
+.legend li>i:first-child{border-radius:.8mm}
+.co{border-radius:0;background:var(--fill);border:.6pt solid var(--line);border-left:1.2mm solid var(--note)}
+.co::before{display:none}
+.co.tip{border-left-color:var(--green)}.co.warn{border-left-color:var(--red)}
+.co b.t{font:600 7.8pt var(--mono);letter-spacing:.1em;text-transform:uppercase}
+ol.steps>li::before{border-radius:.8mm;font-family:var(--mono)}
+ol.steps>li b.h{font-size:10.4pt}
+.cd{border-radius:0;background:var(--fill);border:.6pt solid var(--line)}
+.cd.w{border:.6pt solid var(--ink3)}
+.cd .k{font-family:var(--mono)}
+table.t{font-size:8.9pt}
+table.t th{font:600 7pt var(--mono);letter-spacing:.1em;color:var(--ink2);border-bottom:1.4pt solid var(--ink)}
+table.t.box{border:.8pt solid var(--ink);border-radius:0}
+table.t.box th{background:var(--fill)}
+.pill{border-radius:.8mm;font-family:var(--mono);font-size:7pt}
+.flow .st{border-radius:0;border:.6pt solid var(--line)}
+.flow .st .n{border-radius:.8mm}
+.chk li::before{border-radius:.3mm;border-color:var(--ink2)}
+dl.gl dt{font-family:var(--mono);font-size:8.2pt;letter-spacing:.02em}
+.sw{border-radius:1mm}.sw::after{border-radius:.6mm}
+.toc h3{font-family:var(--mono);letter-spacing:.14em;color:var(--blue)}
+.toc a{border-bottom:.5pt dotted var(--ink3)}
+.toc a span.n{font-family:var(--mono)}
+.bar{font-family:var(--mono);font-size:11.5px;letter-spacing:.02em}
+.bar .sw-st a{font-size:11px}
+/* cover: olive drab, stencil-style title */
+.page.cover{color:#efe6c9}
+.cover .mark{fill:#efe6c9}
+.cover .kicker{font:600 9.5pt var(--mono);letter-spacing:.22em;color:#d9b56a}
+.cover h1{font:700 56pt/1 var(--display);color:#f6efdc;border:0;padding:0;letter-spacing:-.01em;text-transform:uppercase}
+.cover .sub{font:italic 400 14.5pt/1.35 var(--display);color:#d9d0b0}
+.cover .shot{border:.8pt solid #efe6c9;border-radius:0;box-shadow:1.8mm 1.8mm 0 rgba(0,0,0,.35);background:#1d2411}
+.cover .ver{color:#b9b08e;font:500 7.6pt var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.cover .stamp{display:block;position:absolute;right:22mm;top:27mm;border:1.6pt solid #d9b56a;color:#d9b56a;font:600 8.6pt var(--mono);letter-spacing:.2em;padding:1.6mm 3.4mm;transform:rotate(-4deg);text-transform:uppercase}
