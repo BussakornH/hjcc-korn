@@ -29,7 +29,14 @@
     /* administrator only: [{ u, role }] */
     list: function () { var r = call("GET", "/api/accounts"); return r.status === 200 && Array.isArray(r.json) ? r.json : []; },
     /* authenticated fetch for pages: SentinelAuth.api("DELETE", "/api/lines", { id }) */
-    api: function (method, url, body) { return fetch(url, { method: method, headers: head(body ? { "Content-Type": "application/json" } : {}), body: body ? JSON.stringify(body) : undefined }); },
+    /* 401 means the session is gone (it ran out after 12 hours, or the password was reset): the tab goes back to sign-in with a note,
+       instead of staying on a page where nothing saves. */
+    api: function (method, url, body) {
+      return fetch(url, { method: method, headers: head(body ? { "Content-Type": "application/json" } : {}), body: body ? JSON.stringify(body) : undefined }).then(function (r) {
+        if (r.status === 401 && token()) { try { sessionStorage.setItem("sentinel-ended", "1"); } catch (e) {} window.SentinelAuth.signOut(); }
+        return r;
+      });
+    },
     /* async check for the sign-in page, so it never blocks painting */
     check: function (cb) { cb(me()); },
     /* resolves "ok" | "role" | "bad" | "locked" (SentinelAuth.retry = seconds). The administrator form passes no username.

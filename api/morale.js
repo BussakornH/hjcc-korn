@@ -27,7 +27,7 @@ module.exports = L.wrap(async (req, res) => {
   if (!staff) return L.send(res, 403, { error: "forbidden" });
   if (!L.sameOrigin(req)) return L.send(res, 403, { error: "origin" });
   if (req.method !== "POST") return L.send(res, 405, { error: "method" });
-  const b = await L.readJson(req), t = String(b.topic || ""), s = String(b.side || ""), v = Number(b.value);
+  const b = await L.readJson(req), t = String(b.topic || ""), s = String(b.side || ""), v = b.value == null || String(b.value).trim() === "" || typeof b.value === "boolean" ? NaN : Number(b.value);   /* Number(null) and Number("") are 0: an empty field must not zero a side's morale */
   if (!TOPIC.includes(t) || (s !== "me" && s !== "foe") || !Number.isFinite(v)) return L.send(res, 400, { error: "morale" });
   const value = Math.min(100, Math.max(0, Math.round(v * 100) / 100));
   /* runs on the freshest stored state, so two chairs setting different sides at once both land */

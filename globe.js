@@ -1,13 +1,16 @@
-/* SENTINEL sign-in background: a live global-watch globe built from Natural Earth coastlines (land.json), or your own login-bg.mp4 if present. */
+/* SENTINEL sign-in background: a live global-watch globe built from Natural Earth coastlines (land.json).
+   To use your own video instead, name it on the canvas: <canvas id="globe" data-video="login-bg.mp4">. Without that nothing is requested
+   (asking for a file that is not there put a 404 in the log on every visit). */
 (function () {
   var scene = document.querySelector(".scene"), cv = document.getElementById("globe"), x = cv.getContext("2d");
   var still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
   var W, H, D, R, R0, cx, cy, cache = null, gap = 0, prevT = 0, slow = 0, boosted = false, running = true, ang = 0.6, last = 0, MW = 2048, MH = 1024, mask = null, coast = [];
 
-  fetch("login-bg.mp4", { method: "HEAD" }).then(function (r) {
+  var vsrc = cv.getAttribute("data-video");
+  if (vsrc) fetch(vsrc, { method: "HEAD" }).then(function (r) {
     if (!r.ok || !/video/.test(r.headers.get("content-type") || "")) return;
     var v = document.createElement("video");
-    v.src = "login-bg.mp4"; v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true; v.setAttribute("playsinline", "");
+    v.src = vsrc; v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true; v.setAttribute("playsinline", "");
     v.className = "vid"; scene.insertBefore(v, scene.firstChild); cv.style.display = "none"; running = false;
     v.play().catch(function () {});
   }).catch(function () {});

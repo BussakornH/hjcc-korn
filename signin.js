@@ -7,7 +7,7 @@
   /* access level switcher: Delegate -> Chair -> Admin -> Delegate */
   var ROLES = [
     { key: "delegate", name: "Delegate", title: "Delegates Access", note: "Access is limited to committee delegates." },
-    { key: "chair", name: "Chair", title: "Chair Access", note: "Chair accounts can view the whole tracker but cannot change it." },
+    { key: "chair", name: "Chair", title: "Chair Access", note: "Chair accounts run the map, morale, sides and rules, and can view every side's forces." },
     { key: "admin", name: "Admin", title: "Administrator", help: "Contact the system owner to reset the administrator password.", note: "Administrator accounts can do everything, including rules, data and accounts." }
   ], ri = 0, roleBtn = document.getElementById("role"), roleLbl = document.getElementById("roleLbl"), noteEl = document.getElementById("note"), titleEl = document.getElementById("t"), helpEl = document.getElementById("help"), pips = roleBtn.querySelectorAll(".pips i");
   try { var sr = localStorage.getItem("sentinel-role"); for (var q = 0; q < ROLES.length; q++) if (ROLES[q].key === sr) ri = q; } catch (e) {}
@@ -28,6 +28,7 @@
     try { localStorage.setItem("sentinel-role", ROLES[ri].key); } catch (e) {}
   });
   paintRole(false);
+  try { if (sessionStorage.getItem("sentinel-ended")) { sessionStorage.removeItem("sentinel-ended"); err.textContent = "Your session ended. Sign in again."; } } catch (e) {}
   function lockHeight() {
     var body = document.querySelector(".card .body"), hid = u.hidden, t = titleEl.textContent;
     body.style.minHeight = ""; u.hidden = false; titleEl.textContent = "Sign in";

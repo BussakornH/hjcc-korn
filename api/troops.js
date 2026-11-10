@@ -10,7 +10,8 @@ const CHARS = require("./_chars");
         answer is 409 { error: "stale", ver, troops: <the current list> }, so the caller can merge its own edits onto it and send again.
         200 { ok, ver, troops } carries the new ver and the list as stored.
    POST { topic, hp: [{ id, hp }] } -> change the HP of troops on your own side   (a delegate, or staff). Applied on top of whatever is stored, never lost to a concurrent save.
-   troop: { id, uid, name, code, aff, side, lat, lon, hp, maxhp, atk, mov, rng, lost } */
+   troop: { id, uid, name, code, aff, side, lat, lon, hp, maxhp, atk, mov, rng, lost }
+   uid is the chair's unit id, "r:<username>:<unit id>" for a delegate's unit. Usernames may contain dots, so dots are kept. */
 const TOPIC = ["t1", "t2"], MAX = 200;
 const CODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "XBW", "HOB", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF"];
 const AFF = ["blue", "red", "neutral-green", "neutral-violet", "neutral-slate"];
@@ -23,8 +24,8 @@ const clean = (v) => {
     const lat = n(x && x.lat, -90, 90), lon = n(x && x.lon, -180, 180), hp = n(x && x.hp, 0, 100000), maxhp = n(x && x.maxhp, 0, 100000);
     if (!id || seen.has(id) || !name || lat === null || lon === null || hp === null || maxhp === null || !CODES.includes(x.code) || !AFF.includes(x.aff)) return null;
     seen.add(id);
-    out.push({ id, uid: String(x.uid || "").replace(/[^A-Za-z0-9_:-]/g, "").slice(0, 64), name, code: x.code, aff: x.aff, side: x.side === "foe" || x.side === "ne" ? x.side : "me",
-      lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000, hp, maxhp, atk: n(x.atk, 0, 1000) || 0, mov: n(x.mov, 0, 1000) || 0, rng: n(x.rng, 0, 1000) || 0, lost: !!x.lost });
+    out.push({ id, uid: String(x.uid || "").replace(/[^A-Za-z0-9_:.-]/g, "").slice(0, 64), name, code: x.code, aff: x.aff, side: x.side === "foe" || x.side === "ne" ? x.side : "me",
+      lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000, hp: Math.min(hp, maxhp), maxhp, atk: n(x.atk, 0, 1000) || 0, mov: n(x.mov, 0, 1000) || 0, rng: n(x.rng, 0, 1000) || 0, lost: !!x.lost });
   }
   return out;
 };
@@ -51,7 +52,7 @@ module.exports = L.wrap(async (req, res) => {
   if (!TOPIC.includes(t)) return L.send(res, 400, { error: "topic" });
   if (Array.isArray(b.hp)) {   /* HP only: a delegate may change troops on their own side, nothing else */
     const side = me.role === "delegate" ? await sideOf(me.u, t) : null; if (me.role === "delegate" && side === "ne") return L.send(res, 403, { error: "neutral" });
-    const want = b.hp.slice(0, 200).map((q) => ({ id: String(q && q.id), v: Number(q && q.hp) })).filter((q) => Number.isFinite(q.v));
+    const want = b.hp.slice(0, 200).filter((q) => q && q.hp != null && String(q.hp).trim() !== "" && typeof q.hp !== "boolean").map((q) => ({ id: String(q.id), v: Number(q.hp) })).filter((q) => Number.isFinite(q.v));   /* Number(null) and Number("") are 0: an entry without a number must not destroy the troop */
     await L.updateKv("troops:" + t, (cur) => {   /* runs again on the fresh list if someone else saved in the meantime */
       const list = cur || []; let changed = false;
       for (const q of want) {

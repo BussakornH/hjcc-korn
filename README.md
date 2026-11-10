@@ -35,13 +35,18 @@ Every attempt is counted before its password is checked and handed back if it wa
 not get more of them checked. Sign-ins still being checked count too, so if more than ten tabs sign in to one account from one address in
 the same instant a few are refused for a moment; the sign-in page tries once more after 1.5 seconds before it reports a lock.
 The last administrator can be neither removed nor given a lower access level.
-The war-game state itself (forces, log, rules) is still stored in each browser's localStorage, not in the database.
+Each delegate's forces, log and sub class stats are still stored in that browser's localStorage, not in the database (the chairs see a copy of the forces).
+The combat rules (formula, switches, tables, directives) are shared: an edit by the Admin or a chair is saved in the database and reaches every screen within 15 seconds.
+The first time, a chair's device hands in the rules it already has; resetting a topic leaves its rules alone.
+A unit's attack, movement and range stop at 1000 and its HP at 100000, here and on the server.
+When a session ends (12 hours, or a password reset) the next thing the page asks the server for sends that tab back to sign-in.
 
 ## Editing at the same time
 Shared state (troops on the map, sides by day, city sides) is written so that two people editing at once do not erase each other.
 A delegate's HP change and a chair's save are applied on top of each other; two chairs saving the troop list from the same starting point
 get a "stale" answer for the second one, and its page merges its own edits onto the newer list and saves again (`troops-merge.js`).
-Where the same field of the same troop was changed by both, the chair's value wins. Battle lines are still saved as a whole list,
+Where the same field of the same troop was changed by both, the chair's value wins. Rules are saved as a whole per topic: if two people change them
+at the same moment the second is told the rules changed and gets the new ones to look at before trying again. Battle lines are still saved as a whole list,
 so two chairs redrawing lines at the same moment can still overwrite each other.
 
 ## Chair's manual

@@ -15,6 +15,7 @@ const mpTrFind = id => mpTroops().find(x => x.id === id);
    The server copy is what everyone else sees; each chair device keeps a mirror unit so the combat calculator can fight it.
    mpAg holds what the two last agreed on, so a change on either side is told apart from an old value. */
 const mpFlat = s => String(s).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24);   /* what an older server kept of an id with colons in it */
+const mpNoDot = s => String(s).replace(/[^A-Za-z0-9_:-]/g, "").slice(0, 64);   /* what the server kept of a uid before it allowed dots (a username can have them) */
 const mpAg = {}, MPF = ["name", "hp", "maxhp", "atk", "mov", "rng"];
 let mpTLoaded = false, TRMINE = {};
 /* What the server's list for each topic looked like when this device last loaded or saved it (TRB) and its version tag (TRVER).
@@ -96,11 +97,15 @@ function mpEpoch(ep) {
     if (S.topics[t]) { const old = S.topics[t]; S.topics[t] = newTopic(t); S.topics[t].sides = old.sides; S.topics[t].alloc = old.alloc; S.topics[t].rules = old.rules; delete mpFSent[t]; ch = true; }
   });
   if (ch) { UNDO.length = 0; save(); render(); }
+  return ch;
 }
 function mpTroopsLoad() {
-  mpTLoaded = true; const fp = mpForcesLoad(), gen = mpTGen;
+  mpTLoaded = true; const fp0 = mpForcesLoad(), gen = mpTGen;
   return SentinelAuth.api("GET", "/api/troops").then(r => r.ok ? r.json() : null).then(j => {
-    if (!j) return; mpEpoch(j.epoch);
+    if (!j) return;
+    /* A new epoch clears this device's forces. The delegates' forces were asked for at the same moment and may already be in: without asking again
+       a chair's first page after a reset showed no forces at all until the next reload, ten seconds later. */
+    const fp = mpEpoch(j.epoch) ? fp0.then(mpForcesLoad) : fp0;
     if (mpTPend || mpTDrag || gen !== mpTGen) return; mpTrAdopt(j); TRMINE = j.mine || {};
     if (mpTroopSync() && typeof UI !== "undefined" && UI.page !== "map") render();   /* the forces list changed under you */
     fp.then(mpChairRepair);
@@ -111,18 +116,27 @@ function mpTroopSync() {
   if (typeof ROLE === "undefined" || ROLE === "admin") return false;
   const del = ROLE === "delegate"; let push = false, local = false; const patch = {};
   ["t1", "t2"].forEach(t => {
-    const d = S.topics[t], mine = del ? TRMINE[t] : null; if (!d || (del && (!mine || mine === "ne"))) return;
+    const d = S.topics[t], mine = del ? TRMINE[t] : null; if (!d) return;
+    { const ids = new Set(), n = d.units.length; d.units = d.units.filter(y => { if (y.mirror && ids.has(y.id)) return false; ids.add(y.id); return true; }); if (d.units.length !== n) { save(); local = true; } }   /* copies an older version made of one mirror (see below) */
+    if (del && (!mine || mine === "ne")) return;
     (TR[t] || []).forEach(x => {
       const own = !del || x.side === mine, ls = del ? (own ? "me" : "foe") : x.side;   /* a delegate sees their own side's troops as "my forces", the other side's as the enemy */
       const mu = String(SentinelAuth.user() || "").toLowerCase(), pre = "r:" + mu + ":", xid = del && x.uid.toLowerCase().startsWith(pre) ? x.uid.slice(pre.length) : x.uid;   /* a chair put one of your own units on the map */
-      let u = d.units.find(y => y.id === xid);
-      if (!u && del) { u = d.units.find(y => !y.mirror && mpFlat("r:" + mu + ":" + y.id) === x.uid); if (u) { d.units = d.units.filter(y => !(y.mirror && y.id === x.uid)); save(); local = true; } }   /* the same unit, under an id the server cut short */
-      if (!u && !del) { const o = x.uid; u = d.units.find(y => y.remote && mpFlat(y.id) === o); if (u) { x.uid = u.id; d.units = d.units.filter(y => y.remote || y.id !== o); push = true; save(); local = true; } }
+      /* On a device that does not hold the unit itself (a second device, a private window, or the unit was removed from the roster) your own unit on the map
+         is kept as a mirror under the marker's full uid. Looking only for the short id never found that mirror again, so every sync added one more copy. */
+      let u = d.units.find(y => y.id === xid) || (xid !== x.uid ? d.units.find(y => y.id === x.uid) : null);
+      if (!u && del) { u = d.units.find(y => !y.mirror && (mpFlat("r:" + mu + ":" + y.id) === x.uid || mpNoDot("r:" + mu + ":" + y.id) === x.uid)); if (u) { d.units = d.units.filter(y => !(y.mirror && y.id === x.uid)); save(); local = true; } }   /* the same unit, under an id the server cut short */
+      if (!u && !del) { const o = x.uid; u = d.units.find(y => y.remote && (mpFlat(y.id) === o || mpNoDot(y.id) === o)); if (u) { x.uid = u.id; d.units = d.units.filter(y => y.remote || y.id !== o); push = true; save(); local = true; } }
       if (!u) {
         const ty = d.types.find(y => y.code === x.code), fr = d.fronts.find(f => !f.fixed) || d.fronts[0];
         u = mkUnit(d, { side: ls, t: ty, name: x.name, front: x.lost ? "lost" : fr.id, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng }); u.id = x.uid; u.mirror = true; d.units.push(u); save(); local = true;
       }
-      if (u.side !== ls) { u.side = ls; save(); local = true; }
+      if (u.side !== ls) {
+        /* A delegate's unit takes its side from the Sides page (it arrives with the delegates' forces). When the character changes side the marker follows the unit;
+           copying the marker's old side back onto the unit kept the troop in its old colour for good, and its own delegate then saw it as an enemy. */
+        if (!del && u.remote && mpFOk) { x.side = u.side; x.aff = mpAffOf(u.side); push = true; }
+        else { u.side = ls; save(); local = true; }
+      }
       const ag = mpAg[x.id], now = {}; MPF.forEach(k => { now[k] = k === "name" ? u.name : num(u[k]); });
       MPF.forEach(k => {
         const two = !del || (own && k === "hp"), take = () => { if (k === "name") u.name = x.name; else if (k === "hp") setHp(d, u, x.hp); else u[k] = x[k]; local = true; save(); };
