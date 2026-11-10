@@ -29,6 +29,8 @@ Seed local accounts with the same `npm run account` command when no `.env.local`
 that edits shared state from two screens at once; without it the file store is too fast to show a race.
 
 ## Limits
+Vercel's Hobby plan deploys at most 12 serverless functions, and every file in `api/` that does not start with `_` is one. There are 12 now:
+to add a route, fold it into an existing file or put shared code in a `_` file, or the deployment fails to build.
 Forty wrong passwords from one address (a whole room can share one wifi address, so this is generous), or ten against one account from one address, lock sign-in for that address for 15 minutes.
 Sixty wrong passwords against one account from all addresses combined lock that account for 15 minutes (a brute-force ceiling).
 Every attempt is counted before its password is checked and handed back if it was not a wrong guess, so sending guesses in parallel does
