@@ -13,7 +13,7 @@ const CHARS = require("./_chars");
    troop: { id, uid, name, code, aff, side, lat, lon, hp, maxhp, atk, mov, rng, lost }
    uid is the chair's unit id, "r:<username>:<unit id>" for a delegate's unit. Usernames may contain dots, so dots are kept. */
 const TOPIC = ["t1", "t2"], MAX = 200;
-const CODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "XBW", "HOB", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF"];
+const CODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "XBW", "HOB", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF", "MP", "ARM", "SAP", "BAT"];
 const AFF = ["blue", "red", "neutral-green", "neutral-violet", "neutral-slate"];
 const n = (v, lo, hi) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v * 100) / 100)) : null; };
 const clean = (v) => {

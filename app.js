@@ -326,7 +326,7 @@ function spread(list, h, dmg, mode) {
   return r2(left);
 }
 /* artillery rule: sub class codes that count as artillery, and the option "artillery only hits": it still deals its damage but takes none this engagement (no counter-attack damage, no results-chart loss, no damage when it is the one attacked) */
-const ARTY = ["ART"];
+const ARTY = ["ART", "SAP"];
 const isArty = u => !!u && ARTY.includes(u.tcode);
 const noHit = x => ({ ...x, dealt: 0, dmg: 0, pct: 0, self: 0, row: null });
 /* weak / fortified points (placed by the chairs on the battle map): a unit whose map marker stands inside a circle takes ZONE_WEAK more damage in a weak one and ZONE_FORT less in a fortified one.
@@ -630,7 +630,7 @@ const foldAll = keys => `<button class="btn sm" data-a="foldAll" data-k="${keys.
 function emptyState() {
   return `<div class="panel empty"><div class="eyebrow">${esc(topicLbl())}</div><h2>No forces recorded yet</h2>
     <p>Allocations are still pending. When the chairs publish them, add your units.</p>
-    <div class="row-btns"><button class="btn primary lg" data-a="addUnits">${ico("plus")} Add units</button><button class="btn lg" data-a="sample">Load sample forces (demo)</button></div></div>`;
+    <div class="row-btns">${bookletBtn()}<button class="btn ${bookletFor() ? "" : "primary "}lg" data-a="addUnits">${ico("plus")} Add units</button><button class="btn lg" data-a="sample">Load sample forces (demo)</button></div></div>`;
 }
 
 /* ---------- MORALE: the chairs set it, delegates only see their own side's ----------
@@ -1153,7 +1153,7 @@ function pgSettings() {
       ${sideF("me")}${sideF("foe")}</div>
     <div class="panel"><div class="panel-h"><div><h3>Fronts</h3><p>The columns of the Order of Battle board. Reserve and Destroyed are fixed.</p></div><button class="btn sm" data-a="frontAdd">${ico("plus")} Add front</button></div>${fronts}</div>
     <div class="panel"><div class="panel-h"><div><h3>Backup &amp; data</h3><p>Everything is saved in this browser on this device after every change. Export a backup before the committee and to move to another device.</p></div></div>
-      <div class="data-btns"><button class="btn primary" data-a="exp">${ico("down")} Export backup</button><button class="btn" data-a="imp" data-need="admin">${ico("up")} Import backup</button><button class="btn" data-a="sample">Load sample forces (demo)</button></div>
+      <div class="data-btns"><button class="btn primary" data-a="exp">${ico("down")} Export backup</button><button class="btn" data-a="imp" data-need="admin">${ico("up")} Import backup</button><button class="btn" data-a="sample">Load sample forces (demo)</button>${bookletFor() ? `<button class="btn" data-a="booklet">Load booklet forces</button>` : ""}</div>
       <div class="data-btns"><button class="btn danger" data-a="clearForces" data-need="admin">Clear forces and history</button><button class="btn danger" data-a="resetTopic" data-need="admin">Reset everything in this topic</button></div>
       <p class="muted" style="font-size:12.5px">“Clear forces and history” keeps your allocation, rules, classes, sub classes and fronts. Both act on ${esc(topicLbl())} only, and Undo brings the data back.</p></div>
   </section>
@@ -1252,6 +1252,21 @@ function loadSample(quiet) {
     });
   }, "data");
   if (quiet !== true) toast("Sample forces loaded");
+}
+/* the chairs' booklet order of battle for this delegate's character (presets.js, topic 2): named units at the booklet's strength, in Reserve until deployed.
+   A unit the booklet lists as "Not Found" (0%) is not raised yet, so it is left out rather than put on the books as already destroyed. */
+const bookletFor = () => (TOPICS[S.topic].booklets || {})[D().alloc.delegation] || null;
+const bookletBtn = () => bookletFor() ? `<button class="btn primary lg" data-a="booklet">Load ${esc(bookletFor().country)} booklet forces</button>` : "";
+function loadBooklet() {
+  const B = bookletFor(); if (!B) return;
+  const raised = B.units.filter(u => u[2] > 0), absent = B.units.length - raised.length;
+  act(`Booklet forces loaded: ${B.country}, ${plural(raised.length, "unit")}${absent ? ` (${absent} not found, not added)` : ""}`, d => {
+    raised.forEach(([code, name, pct]) => {
+      const t = d.types.find(x => x.code === code); if (!t) return;
+      d.units.push(mkUnit(d, { side: "me", t, name, front: "reserve", hp: r2(t.hp * pct / 100) }));
+    });
+  }, "data");
+  toast("Booklet forces loaded");
 }
 /* topics whose old demo data was dropped by the v2 conversion get the new demo instead */
 function reseed() {
@@ -1370,6 +1385,7 @@ const A = {
   },
   mfAll: el => { const on = el.dataset.v === "1", d = D(); d.branches.forEach(b => { if (on) delete UI.fold["mf:" + b.id]; else UI.fold["mf:" + b.id] = true; }); d.types.forEach(t => { if (on) UI.open["mf:" + t.id] = true; else delete UI.open["mf:" + t.id]; }); saveUI(); render(); },
   sample: el => D().units.length ? arm(el, loadSample) : loadSample(),
+  booklet: el => D().units.length ? arm(el, loadBooklet) : loadBooklet(),
   moraleStep: el => setMorale(el.dataset.s, D().sides[el.dataset.s].morale + num(el.dataset.d)),
   ovSide: el => { UI.ovSide = el.dataset.s; saveUI(); render(); },
   ovMetric: el => { UI.ovMetric = el.dataset.m; saveUI(); render(); },

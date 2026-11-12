@@ -201,6 +201,34 @@
    "topics": [
     "t2"
    ]
+  },
+  "MP": {
+   "name": "Military Police",
+   "domain": "land",
+   "topics": [
+    "t2"
+   ]
+  },
+  "ARM": {
+   "name": "Armored Tanks",
+   "domain": "land",
+   "topics": [
+    "t2"
+   ]
+  },
+  "SAP": {
+   "name": "Heavy Siege Artillery",
+   "domain": "land",
+   "topics": [
+    "t2"
+   ]
+  },
+  "BAT": {
+   "name": "Dreadnought Battleships",
+   "domain": "sea",
+   "topics": [
+    "t2"
+   ]
   }
  }
 }
