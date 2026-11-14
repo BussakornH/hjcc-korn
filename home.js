@@ -1,5 +1,6 @@
 /* Home page: reveal sections as they scroll in, and the UTC clock. */
 (function () {
+  window.SentinelHomeReady = true;
   var els = document.querySelectorAll(".rv");
   if (!("IntersectionObserver" in window)) { for (var i = 0; i < els.length; i++) els[i].classList.add("in"); }
   else {

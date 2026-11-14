@@ -31,7 +31,11 @@ main { flex: 1; display: flex; justify-content: center; align-items: flex-start;
 .card .note { margin: 10px 0 22px; font-size: 12.5px; color: var(--ink-3); }
 form { display: grid; gap: 12px; }
 form input[type="text"], form input[type="password"] { width: 100%; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 2px; background: #fff; color: var(--ink); font: 400 14px var(--sans); transition: border-color .15s; }
-form input::placeholder { color: #8a8f98; }
+form input::placeholder { color: var(--ink-3); }
+.fld { display: grid; gap: 6px; text-align: left; }
+.fld[hidden] { display: none; }
+.fld label { font: 600 12.5px var(--sans); color: var(--ink); }
+form input[aria-invalid="true"] { border-color: var(--bad); }
 form input[type="text"]:focus, form input[type="password"]:focus { outline: none; border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
 .pw { position: relative; }
 .pw input { padding-right: 60px; }
@@ -94,7 +98,14 @@ body.leaving .scene { transition: opacity .45s ease; opacity: 0; }
 @keyframes pop { to { opacity: 1; transform: none; } }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes fill { to { width: 100%; } }
-@media (prefers-reduced-motion: reduce) { .grant, .grant.on { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .grant, .grant.on, .card, .bar, .hud, .legal, .brk, .card h1, .card .note, .card .foot .rl, .card .foot svg, .pips i, .steps li, .steps li::before { transition: none; }
+  .grant.on .g-in img, .grant.on .g-in h2, .grant.on .g-in .who, .grant.on .gbar i, .pick-wrap { animation: none; opacity: 1; transform: none; }
+  .grant.on .gbar i { width: 100%; }
+  .pick-card, .pick-card canvas, .pick-card .go, .pick-card .go-old { transition: none; }
+  .pick-card:hover, .pick-card:focus-within, .pick-card:hover .go, .card .foot:hover svg { transform: none; }
+  body.pick.leaving .pick-wrap { transition: none; }
+}
 
 /* access level switcher (navy bar) */
 .card .foot { display: flex; align-items: center; justify-content: center; gap: 14px; width: 100%; height: 52px; border: 0; background: var(--navy); color: #fff; font: 600 12.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; cursor: pointer; transition: background .2s; }
@@ -159,3 +170,9 @@ body.pick.leaving .pick-wrap { opacity: 0; transform: translateY(-8px); transiti
 .pick-card .lines .none { font: 400 11px var(--mono); color: rgba(255, 255, 255, .62); }
 
 .pick-card .lines[hidden] { display: none; }
+
+/* the way in sits with the title and summary, above the map, so it is on screen without scrolling at laptop height */
+.pick-card canvas, .pick-card .lines, .pick-card .sides2 { order: 1; }
+.pick-card .go { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; margin: 4px 0 10px; padding: 0 18px; border: 1px solid #2997ff; border-radius: 999px; background: rgba(41, 151, 255, .12); color: #fff; letter-spacing: .14em; transition: background .2s, transform .2s; }
+.pick-card:hover .go, .pick-card .go:focus-visible { background: #0066cc; border-color: #0066cc; transform: none; }
+@media (prefers-reduced-motion: reduce) { .pick-card .go { transition: none; } }

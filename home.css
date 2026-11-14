@@ -178,10 +178,11 @@ footer .cols a:hover { color: var(--navy); text-decoration: underline; }
 footer p { max-width: 70em; line-height: 1.6; }
 
 /* reveal */
-.rv { opacity: 0; transform: translateY(18px); transition: opacity .7s cubic-bezier(.2, .7, .2, 1), transform .7s cubic-bezier(.2, .7, .2, 1); }
-.rv.in { opacity: 1; transform: none; }
+/* hidden only once home-js.js has marked the page, so a blocked or failed script never leaves it blank */
+.js .rv { opacity: 0; transform: translateY(18px); transition: opacity .7s cubic-bezier(.2, .7, .2, 1), transform .7s cubic-bezier(.2, .7, .2, 1); }
+.js .rv.in { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) {
-  .rv { opacity: 1; transform: none; transition: none; }
+  .js .rv { opacity: 1; transform: none; transition: none; }
   .map-route, .ring { animation: none; }
   html { scroll-behavior: auto; }
 }

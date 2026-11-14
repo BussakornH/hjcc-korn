@@ -36,10 +36,16 @@
       <p class="note" id="note">Access is limited to committee delegates.</p>
 
       <form id="f" novalidate>
-        <input id="u" name="username" type="text" placeholder="Username" aria-label="Username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
-        <div class="pw">
-          <input id="p" name="password" type="password" placeholder="Password" aria-label="Password" autocomplete="current-password" required>
-          <button type="button" id="show" aria-label="Show password">Show</button>
+        <div class="fld" id="uf">
+          <label for="u">Username</label>
+          <input id="u" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="err" required>
+        </div>
+        <div class="fld">
+          <label for="p">Password</label>
+          <div class="pw">
+            <input id="p" name="password" type="password" autocomplete="current-password" aria-describedby="err" required>
+            <button type="button" id="show" aria-pressed="false" aria-label="Show password">Show</button>
+          </div>
         </div>
         <div class="err" id="err" role="alert" aria-live="assertive"></div>
         <button class="enter" type="submit" id="go">Enter</button>

@@ -408,7 +408,6 @@ const PAGES = [
   { id: "overview", name: "Overview", icon: "grid" },
   { id: "forces", name: "My Forces", icon: "layers" },
   { id: "board", name: "Order of Battle", icon: "board" },
-  { id: "roster", name: "Battle Overview", icon: "shield" },
   { id: "morale", name: "Morale", icon: "pulse" },
   { id: "map", name: "Battle Map", icon: "map" },
   { id: "combat", name: "Combat Calculator", icon: "swords" },
@@ -578,6 +577,7 @@ function render() {
     if (!renderWait) { renderWait = true; (function w() { if (dragging()) requestAnimationFrame(w); else { renderWait = false; render(); } })(); }
     return;
   }
+  if (UI.page === "roster") UI.page = "forces";   /* Battle Overview was folded into My Forces */
   if (!pages().some(p => p.id === UI.page)) UI.page = pages()[0].id;
   const a = document.activeElement, fid = a && a.id ? a.id : null; let ss = null;
   try { if (fid && typeof a.selectionStart === "number") ss = [a.selectionStart, a.selectionEnd]; } catch (e) { /* not a text field */ }
@@ -755,7 +755,7 @@ function pgOverview() {
           <div class="stat-big">${strP}<small>%</small></div><div class="stat-lbl">Combat strength of ${esc(sideLbl(s))} · ${fx(T.hp)} of ${fx(T.max)} HP</div>
           <div class="stat-big">${T.n}</div><div class="stat-lbl">Units in the field · ${T.lost} lost</div>
           ${showMorale() ? `<div class="stat-big sm">${fx(d.sides[s].morale)}<small>%</small></div><div class="stat-lbl">Morale</div>` : ""}
-          ${ROLE === "chair" ? "" : `<button class="btn primary" data-a="go" data-p="roster">${ico("shield")} Battle overview</button>`}
+          ${ROLE === "chair" ? "" : `<button class="btn primary" data-a="go" data-p="forces">${ico("layers")} My forces</button>`}
         </div>
         <div class="ov-r">
           ${CH.area(series, H.map(h => h.t), { label: "Force strength over time", empty: "The chart fills in as your forces change.<br>Every move, HP change and battle adds a point." })}
@@ -773,7 +773,7 @@ function pgOverview() {
   </section>
   <section class="tiles">${tiles}</section>
   <section class="ov-mid">
-    <div class="panel${foldCls("ov-types")}">${ph("ov-types", "Units by sub class", "How many are left in the field, and how many were lost", (ROLE === "chair" ? "" : '<button class="lnk" data-a="go" data-p="roster">Details</button>'), sumTypes)}<div class="fold-body">${typeBars(s)}</div></div>
+    <div class="panel${foldCls("ov-types")}">${ph("ov-types", "Units by sub class", "How many are left in the field, and how many were lost", (ROLE === "chair" ? "" : '<button class="lnk" data-a="go" data-p="forces">Details</button>'), sumTypes)}<div class="fold-body">${typeBars(s)}</div></div>
     <div class="panel${foldCls("ov-ready")}">${ph("ov-ready", "Readiness", "Units by strength (HP left as a share of full HP)", "", sumReady)}<div class="fold-body">${readiness(s)}</div></div>
   </section>
   <section class="ov-bot">
@@ -835,20 +835,20 @@ function battleTable(n) {
    Classes fold with UI.fold["mf:<class>"] (open by default); sub classes open with UI.open["mf:<sub class>"] (closed by default). */
 function pgForces() {
   const d = D(), U = d.units.filter(u => u.side === "me"), T = tot("me");
-  const sumHtml = `<div class="ro-sum"><div style="--bc:var(--me)"><span>${esc(sideLbl("me"))}</span><b>${T.n} <small>of ${T.all}</small></b><span>units in the field</span></div><div><span>Hit points</span><b>${fx(T.hp)} <small>/ ${fx(T.max)}</small></b><span>${Math.round(pc(T.hp, T.max))}% strength overall</span></div><div><span>Attack power</span><b>${fx(T.atk)}</b><span>effective, in the field</span></div><div><span>In reserve</span><b>${T.reserve}</b><span>not deployed</span></div><div><span>Lost</span><b>${T.lost}</b><span>destroyed</span></div></div>`;
+  const sumHtml = `<div class="ro-sum"><div style="--bc:var(--me)"><span>${esc(sideLbl("me"))}</span><b>${T.n} <small>of ${T.all}</small></b><span>units in the field</span></div><div><span>Hit points</span><b>${fx(T.hp)} <small>/ ${fx(T.max)}</small></b><span>${Math.round(pc(T.hp, T.max))}% of starting HP, losses included</span></div><div><span>Attack power</span><b>${fx(T.atk)}</b><span>effective, in the field</span></div><div><span>In reserve</span><b>${T.reserve}</b><span>not deployed</span></div><div><span>Lost</span><b>${T.lost}</b><span>destroyed</span></div></div>`;
   const cls = d.branches.map(b => {
     const BU = U.filter(u => u.branch === b.id), subs = d.types.filter(t => t.branch === b.id), custom = BU.filter(u => !subs.some(t => t.id === u.type));
     const al = BU.filter(u => !lost(u)), hp = sum(al.map(u => u.hp)), mx = sum(al.map(u => u.maxhp)), k = "mf:" + b.id, f = isFold(k);
     return `<section class="panel br-sec mf-cls${f ? " folded" : ""}" style="--bc:${b.color}">
       <header class="br-h" id="fold-${k}" data-a="fold" data-k="${k}" role="button" tabindex="0" aria-expanded="${!f}" title="${f ? "Expand" : "Collapse"}"><h3><span class="chev">${ico("chev")}</span><i class="bsq"></i>${esc(b.name)}</h3>
-        <div class="meta"><span><b>${al.length}</b> of ${BU.length} units left</span><span>HP <b>${fx(hp)}</b> / ${fx(mx)}</span><span>Strength <b>${al.length ? Math.round(pc(hp, mx)) + "%" : "—"}</b></span><span>ATK <b>${fx(sum(al.map(u => eff(u).eff)))}</b></span><span>${plural(subs.length, "sub class", "sub classes")}</span></div></header>
+        <div class="meta"><span><b>${al.length}</b> of ${BU.length} units left</span><span>HP <b>${fx(hp)}</b> / ${fx(mx)}</span><span title="HP of the units still in the field">Unit health <b>${al.length ? Math.round(pc(hp, mx)) + "%" : "—"}</b></span><span>ATK <b>${fx(sum(al.map(u => eff(u).eff)))}</b></span><span>${plural(subs.length, "sub class", "sub classes")}</span></div></header>
       <div class="fold-body">
         ${subs.map(t => subBlock(t, BU.filter(u => u.type === t.id), b)).join("")}${custom.length ? subBlock(null, custom, b) : ""}
         ${!subs.length && !custom.length ? `<div class="none mf-none">No sub classes in ${esc(b.name)} yet.</div>` : ""}
         <div class="mf-add"><button class="btn sm" data-a="subAdd" data-b="${b.id}">${ico("plus")} Add sub class to ${esc(b.name)}</button></div>
       </div></section>`;
   }).join("");
-  return head("My forces", "Your own forces by class and sub class: how many units are left, at what strength and HP. Open a sub class to see and adjust each unit; collapse any class; add sub classes as the chairs announce them. All sub class stats are placeholders until the chairs' booklet arrives.",
+  return head("My forces", "Your own forces by class and sub class: how many units are left, at what strength and HP. Each row shows where its units are. Open a sub class to see and adjust each unit; add sub classes as the chairs announce them. All sub class stats are placeholders until the chairs' booklet arrives.",
     `<button class="btn sm" data-a="mfAll" data-v="0">Collapse all</button><button class="btn sm" data-a="mfAll" data-v="1">Expand all</button><button class="btn sm primary" data-a="addUnits" data-s="me">${ico("plus")} Add units</button>`) + sumHtml + cls;
 }
 function subBlock(t, units, b) {
@@ -860,7 +860,8 @@ function subBlock(t, units, b) {
       <div class="mf-left">${units.length ? `<b>${al.length}</b> left of ${units.length}` : '<span class="muted">No units</span>'}</div>
       <div class="rr-sq">${units.slice().sort(byStr).map(u => `<i class="sq t-${tierOf(u)}" title="${esc(u.name)} · HP ${fx(u.hp)}/${fx(u.maxhp)} · ${esc(frontName(u.front))}"></i>`).join("")}</div>
       <div class="rr-str">${al.length ? `<div class="hpbar"><i class="t-${tierKey(st)}" style="width:${st}%"></i></div><span>${Math.round(st)}%</span>` : ""}</div>
-      <div class="mf-hp">${al.length ? `HP ${fx(hp)} / ${fx(mx)}` : ""}</div>
+      <div class="mf-hp">${al.length ? `HP ${fx(hp)} / ${fx(mx)}<small>ATK ${fx(sum(al.map(u => eff(u).eff)))}</small>` : ""}</div>
+      <div class="mf-where">${Object.entries(countBy(al, u => frontName(u.front))).map(([f, n]) => `${esc(f)} <b>${n}</b>`).join(" · ")}</div>
       <div class="mf-tools">${t ? `<button class="icon-btn sm" data-a="subEdit" data-id="${t.id}" aria-label="Edit ${esc(name)}" title="Edit sub class">${ico("edit")}</button><button class="btn sm" data-a="addUnits" data-s="me" data-t="${t.id}">${ico("plus")} Add</button>` : ""}</div>
     </div>
     ${open ? `<div class="mf-units">${units.length ? units.slice().sort(byOrd).map(unitRow).join("") : `<div class="none">No ${esc(name)} units yet. <button class="lnk" data-a="addUnits" data-s="me" data-t="${t ? t.id : ""}">Add some</button></div>`}${t ? `<div class="mf-stats">Sub class stats for new units: ATK ${fx(t.atk)} · HP ${fx(t.hp)} · MOV ${fx(t.mov)} · RNG ${fx(t.rng)}</div>` : ""}</div>` : ""}
@@ -997,13 +998,13 @@ function rosterSide(s, narrow) {
   const d = D(), U = d.units.filter(u => u.side === s);
   if (!U.length) return `<div class="panel"><div class="none big">No ${esc(sideLbl(s))} units recorded yet.<div class="row-btns" style="justify-content:center"><button class="btn primary" data-a="addUnits" data-s="${s}">${ico("plus")} Add units</button></div></div></div>`;
   const T = tot(s), G = groupTypes(U);
-  const sumHtml = `<div class="ro-sum ${narrow ? "narrow" : ""}"><div style="--bc:${sideCol(s)}"><span>${esc(sideLbl(s))}</span><b>${T.n} <small>of ${T.all}</small></b><span>units in the field</span></div><div><span>Hit points</span><b>${fx(T.hp)} <small>/ ${fx(T.max)}</small></b><span>${Math.round(pc(T.hp, T.max))}% strength overall</span></div><div><span>Attack power</span><b>${fx(T.atk)}</b><span>effective, in the field</span></div><div><span>In reserve</span><b>${T.reserve}</b><span>not on a front</span></div><div><span>Lost</span><b>${T.lost}</b><span>destroyed</span></div></div>`;
+  const sumHtml = `<div class="ro-sum ${narrow ? "narrow" : ""}"><div style="--bc:${sideCol(s)}"><span>${esc(sideLbl(s))}</span><b>${T.n} <small>of ${T.all}</small></b><span>units in the field</span></div><div><span>Hit points</span><b>${fx(T.hp)} <small>/ ${fx(T.max)}</small></b><span>${Math.round(pc(T.hp, T.max))}% of starting HP, losses included</span></div><div><span>Attack power</span><b>${fx(T.atk)}</b><span>effective, in the field</span></div><div><span>In reserve</span><b>${T.reserve}</b><span>not on a front</span></div><div><span>Lost</span><b>${T.lost}</b><span>destroyed</span></div></div>`;
   const brs = d.branches.map(b => ({ b, G: G.filter(g => g.branch === b.id) })).filter(x => x.G.length);
   const orphan = G.filter(g => !d.branches.some(b => b.id === g.branch)); if (orphan.length) brs.push({ b: { id: "", name: "Other", color: "#6b7380" }, G: orphan });
   return sumHtml + brs.map(({ b, G }) => {
     const al = G.flatMap(g => g.alive), all = G.flatMap(g => g.units), hp = sum(al.map(u => u.hp)), mx = sum(al.map(u => u.maxhp));
     const k = "ro:" + (b.id || "other"), f = isFold(k);   /* same key on both sides, so side-by-side columns fold together */
-    return `<section class="panel br-sec${f ? " folded" : ""}" style="--bc:${b.color}"><header class="br-h" id="fold-${k}-${s}" data-a="fold" data-k="${k}" role="button" tabindex="0" aria-expanded="${!f}" title="${f ? "Expand" : "Collapse"}"><h3><span class="chev">${ico("chev")}</span><i class="bsq"></i>${esc(b.name)}</h3><div class="meta"><span><b>${al.length}</b> of ${all.length} units left</span><span>HP <b>${fx(hp)}</b> / ${fx(mx)}</span><span>Strength <b>${al.length ? Math.round(pc(hp, mx)) + "%" : "—"}</b></span><span>ATK <b>${fx(sum(al.map(u => eff(u).eff)))}</b></span></div></header>
+    return `<section class="panel br-sec${f ? " folded" : ""}" style="--bc:${b.color}"><header class="br-h" id="fold-${k}-${s}" data-a="fold" data-k="${k}" role="button" tabindex="0" aria-expanded="${!f}" title="${f ? "Expand" : "Collapse"}"><h3><span class="chev">${ico("chev")}</span><i class="bsq"></i>${esc(b.name)}</h3><div class="meta"><span><b>${al.length}</b> of ${all.length} units left</span><span>HP <b>${fx(hp)}</b> / ${fx(mx)}</span><span title="HP of the units still in the field">Unit health <b>${al.length ? Math.round(pc(hp, mx)) + "%" : "—"}</b></span><span>ATK <b>${fx(sum(al.map(u => eff(u).eff)))}</b></span></div></header>
       <div class="fold-body"><div class="rr-head ${narrow ? "narrow" : ""}"><span>Sub class</span><span>Left</span><span>Each unit</span><span>Avg strength</span><span>HP</span><span>ATK</span><span class="rr-where">Where</span><span></span></div>
       ${G.map(g => rosterRow(g, s, narrow)).join("")}</div></section>`;
   }).join("");
@@ -1346,7 +1347,8 @@ function arm(btn, fn) {
   btn.dataset.arm = "1"; btn.dataset.t = btn.innerHTML; btn.classList.add("armed"); btn.textContent = "Click again to confirm";
   setTimeout(() => { if (btn.isConnected && btn.dataset.arm) { delete btn.dataset.arm; btn.classList.remove("armed"); btn.innerHTML = btn.dataset.t; } }, 3000);
 }
-function go(p) { UI.page = p; UI.colMenu = null; document.body.classList.remove("nav-open"); if (!document.body.classList.contains("side-off")) { document.body.classList.add("side-off"); try { localStorage.setItem("sentinel-side", "off"); } catch (e) {} } saveUI(); render(); window.scrollTo(0, 0); }   /* the side bar folds away on every page change and stays shut until the menu button is pressed again */
+function syncMenu() { const b = document.querySelector(".menu-btn"); if (!b) return; const open = matchMedia("(max-width: 900px)").matches ? document.body.classList.contains("nav-open") : !document.body.classList.contains("side-off"); b.setAttribute("aria-expanded", open ? "true" : "false"); b.setAttribute("aria-label", open ? "Close menu" : "Open menu"); }
+function go(p) { UI.page = p; UI.colMenu = null; document.body.classList.remove("nav-open"); saveUI(); render(); syncMenu(); window.scrollTo(0, 0); }   /* on desktop the side bar stays as the user left it; on phones the slide-in menu closes after a pick */
 
 /* ======================= EVENTS ======================= */
 const A = {
@@ -1368,7 +1370,7 @@ const A = {
     SentinelAuth.api("DELETE", "/api/accounts", { u }).then(r => r.ok ? (toast("Removed " + u), loadAcc()) : r.json().then(j => toast(ACC_ERR[j.error] || "Could not remove it"), () => toast("Could not remove it")), () => toast("Could not reach the server"));
   },
   topic: el => { if (ROLE !== "admin" || S.topic === el.dataset.t) return; S.topic = el.dataset.t; UI.sel = { att: [], def: [] }; UI.cm = { att: null, def: null }; UI.drawer = null; UI.open = {}; save(); saveUI(); document.body.classList.remove("nav-open"); render(); toast(topicLbl()); },
-  menu: () => { if (matchMedia("(max-width: 900px)").matches) document.body.classList.toggle("nav-open"); else { const off = document.body.classList.toggle("side-off"); try { localStorage.setItem("sentinel-side", off ? "off" : "on"); } catch (e) {} } },
+  menu: () => { if (matchMedia("(max-width: 900px)").matches) document.body.classList.toggle("nav-open"); else { const off = document.body.classList.toggle("side-off"); try { localStorage.setItem("sentinel-side2", off ? "off" : "on"); } catch (e) {} } syncMenu(); },
   undo: () => undo(),
   theme: el => { UI.theme = el.dataset.v; applyTheme(); saveUI(); chrome(); },
   addUnits: el => openAdd(el.dataset.f || "", el.dataset.s, el.dataset.t),
@@ -1536,7 +1538,7 @@ document.addEventListener("toggle", e => { if (e.target.matches && e.target.matc
 document.addEventListener("keydown", e => {
   const t = e.target, typing = t.matches && t.matches("input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select");
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z" && !typing) { e.preventDefault(); undo(); return; }
-  if (e.key === "Escape") { if ($("modal").classList.contains("on")) closeModal(); else if (UI.drawer) closeDrawer(); else if (UI.colMenu) { UI.colMenu = null; render(); } else document.body.classList.remove("nav-open"); return; }
+  if (e.key === "Escape") { if ($("modal").classList.contains("on")) closeModal(); else if (UI.drawer) closeDrawer(); else if (UI.colMenu) { UI.colMenu = null; render(); } else { document.body.classList.remove("nav-open"); syncMenu(); } return; }
   if (e.key === "Enter" && t.closest && t.closest(".m") && t.matches("input:not([type=checkbox]):not([type=radio])")) { e.preventDefault(); const b = document.querySelector("#modal .m-act .btn.primary"); if (b) b.click(); return; }   /* Enter saves a pop-up form */
   if (e.key === "Enter" && t.id === "expr") { t.blur(); return; }
   if ((e.key === "Enter" || e.key === " ") && t.matches && t.matches("[role=button][data-a]")) { e.preventDefault(); t.click(); }
@@ -1552,7 +1554,8 @@ if (window.HJCCDnD) HJCCDnD.init({
   onZone: (id, zone) => toTray(id, zone === "def" ? "def" : "att"),
   onCancel: () => render()
 });
-try { if (localStorage.getItem("sentinel-side") === "off") document.body.classList.add("side-off"); } catch (e) {}
+try { localStorage.removeItem("sentinel-side"); if (localStorage.getItem("sentinel-side2") === "off") document.body.classList.add("side-off"); } catch (e) {}
+syncMenu();
 applyTheme();
 reseed();
 render();

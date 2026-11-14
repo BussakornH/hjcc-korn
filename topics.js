@@ -10,7 +10,11 @@
     document.body.classList.add("leaving");
     setTimeout(function () { location.replace("app.html"); }, 380);
   }
-  for (var i = 0; i < cards.length; i++) cards[i].addEventListener("click", function (e) { enter(this); });
+  for (var i = 0; i < cards.length; i++) {
+    cards[i].addEventListener("click", function (e) { enter(this); });
+    var gb = cards[i].querySelector(".go"), nm = cards[i].querySelector("b");
+    if (gb && nm) gb.setAttribute("aria-label", "Enter topic: " + nm.textContent);   /* two buttons with the same name are indistinguishable to a screen reader */
+  }
   document.getElementById("out").addEventListener("click", function () { SentinelAuth.signOut(); });
   var c = document.getElementById("clock"); function t() { c.textContent = "UTC " + new Date().toISOString().slice(11, 19); } t(); setInterval(t, 1000);
 })();

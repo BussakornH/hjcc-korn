@@ -6,3 +6,8 @@ node_modules
 manual/src
 manual/build.js
 manual/pdf.js
+# internal docs and local tools: keep them off the public site
+README.md
+PENTEST-REPORT*.md
+scripts
+.claude

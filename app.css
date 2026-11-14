@@ -410,7 +410,7 @@ body.dnd, body.dnd * { cursor: grabbing !important; }
 
 /* ---------- my forces (class -> sub class -> units) ---------- */
 .mf-sub { border-bottom: 1px solid var(--line-2); }
-.mf-sh { display: grid; grid-template-columns: minmax(200px, 1.5fr) 110px minmax(90px, 1fr) 150px 120px auto; gap: 12px; align-items: center; padding: 9px 18px; }
+.mf-sh { display: grid; grid-template-columns: minmax(180px, 1.4fr) 100px minmax(80px, 1fr) 140px 110px minmax(120px, 1fr) auto; gap: 12px; align-items: center; padding: 9px 18px; }
 .mf-sub.open > .mf-sh { background: var(--panel-2); }
 .mf-tg { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
 .mf-tg b { overflow: hidden; font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
@@ -421,6 +421,9 @@ body.dnd, body.dnd * { cursor: grabbing !important; }
 .mf-left { color: var(--ink-3); font-size: var(--fs-sm); white-space: nowrap; }
 .mf-left b { color: var(--ink); font-size: var(--fs-xl); }
 .mf-hp { font-size: var(--fs-sm); white-space: nowrap; }
+.mf-hp small { display: block; color: var(--ink-3); font-size: var(--fs-xs); }
+.mf-where { font-size: var(--fs-sm); color: var(--ink-2); line-height: 1.35; }
+.mf-where b { color: var(--ink); font-weight: 600; }
 .mf-tools { display: flex; justify-content: flex-end; gap: 6px; }
 .mf-units { padding: 2px 18px 10px 48px; border-top: 1px solid var(--line-2); background: var(--panel-2); }
 .mf-stats { padding-top: 8px; color: var(--ink-3); font-size: var(--fs-xs); }
@@ -633,7 +636,7 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
   .rr > .rr-str { order: 6; }
   .rr-units { padding: 4px 14px 10px; }
   .mf-sh { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; padding: 10px 14px; }
-  .mf-sh > .rr-sq, .mf-sh > .rr-str { grid-column: 1 / -1; }
+  .mf-sh > .rr-sq, .mf-sh > .rr-str, .mf-sh > .mf-where { grid-column: 1 / -1; }
   .mf-sh > .mf-hp { display: none; }
   .mf-units { padding: 2px 14px 10px; }
   .ru { grid-template-columns: 1fr 1fr; }
