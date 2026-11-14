@@ -32,7 +32,11 @@ that edits shared state from two screens at once; without it the file store is t
 Vercel's Hobby plan deploys at most 12 serverless functions, and every file in `api/` that does not start with `_` is one. There are 12 now:
 to add a route, fold it into an existing file or put shared code in a `_` file, or the deployment fails to build.
 Forty wrong passwords from one address (a whole room can share one wifi address, so this is generous), or ten against one account from one address, lock sign-in for that address for 15 minutes.
-Sixty wrong passwords against one account from all addresses combined lock that account for 15 minutes (a brute-force ceiling).
+Sixty wrong passwords against one account from all addresses combined lock that account for 15 minutes (a brute-force ceiling), but only for
+addresses the account has never signed in from: an address it has signed in from before is still let through (and still held to ten wrong guesses),
+so strangers filling the ceiling from many addresses cannot keep the owner, or every administrator at once, out.
+An IPv6 address is counted by its /64 network, so one connection cannot start a fresh count by changing address.
+Off Vercel the caller's address is the socket address; set `TRUST_PROXY=1` only behind a proxy of your own that sets `X-Forwarded-For`.
 Every attempt is counted before its password is checked and handed back if it was not a wrong guess, so sending guesses in parallel does
 not get more of them checked. Sign-ins still being checked count too, so if more than ten tabs sign in to one account from one address in
 the same instant a few are refused for a moment; the sign-in page tries once more after 1.5 seconds before it reports a lock.

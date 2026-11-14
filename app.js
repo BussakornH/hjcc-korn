@@ -135,6 +135,7 @@ function migrate(o) {
     Object.keys(f).forEach(key => { if (d[key] === undefined) d[key] = f[key]; });
     d.rules = Object.assign(defaultRules(), d.rules || {});
     d.branches.forEach(b => { const n = OLD_BRANCH_COL[String(b.color).toLowerCase()]; if (n) b.color = n; });
+    d.branches.forEach(b => { if (!/^#[0-9a-f]{3,8}$/i.test(b.color)) b.color = "#8a8f98"; });   /* colours go into style="" as they are: anything in a saved or imported file that is not a plain hex colour is replaced */
     if (!d.fronts.some(x => x.id === "reserve")) d.fronts.unshift(f.fronts[0]);
     if (!d.fronts.some(x => x.id === "lost")) d.fronts.push(f.fronts[f.fronts.length - 1]);
   });

@@ -11,7 +11,9 @@ const SCRYPT = { N: 1 << 15, r: 8, p: 1 };
 /* LIMIT_IP is deliberately generous: a whole committee can sit behind one venue wifi address, and a few typos must not lock the room out.
    Brute force on one account is stopped by the two account limits below, so this one only has to catch a single address spraying many usernames.
    LIMIT_ACCT counts wrong passwords per account FROM ONE ADDRESS; LIMIT_ACCT_ALL is the ceiling across every address (brute-force cap).
-   Keeping them apart means strangers cannot lock an account out for its owner with a handful of bad guesses. */
+   Keeping them apart means strangers cannot lock an account out for its owner with a handful of bad guesses. The ceiling itself only stops
+   addresses the account has never signed in from (see isKnown), so filling it from many addresses does not keep the owner out either.
+   An IPv6 address is counted by its /64 (see ipNet). */
 const LIMIT_WINDOW = 15 * 60, LIMIT_IP = 40, LIMIT_ACCT = 10, LIMIT_ACCT_ALL = 60;
 const MAX_BODY = 256 * 1024;
 const ON_VERCEL = !!process.env.VERCEL;
@@ -38,7 +40,7 @@ function pg() {
         if ((await q.query("SELECT 1 FROM sentinel_accounts LIMIT 1")).length) return;
         const seed = JSON.parse(process.env.SEED_ACCOUNTS);
         for (const u of Object.keys(seed)) {
-          if (!ROLES.includes(seed[u].role)) continue;
+          if (!ROLES.includes(seed[u].role) || !/^[a-z0-9._-]{2,32}$/.test(u.toLowerCase()) || ["__proto__", "constructor", "prototype"].includes(u.toLowerCase())) continue;
           await q.query("INSERT INTO sentinel_accounts (u, role, hash) VALUES ($1, $2, $3) ON CONFLICT (u) DO NOTHING", [u.toLowerCase(), seed[u].role, await hashPassword(String(seed[u].p))]);
         }
       })
@@ -91,6 +93,7 @@ const pgDb = {
       "INSERT INTO sentinel_rl (k, n, exp) VALUES ($1, 1, now() + $2::interval) ON CONFLICT (k) DO UPDATE SET " +
       "n = CASE WHEN sentinel_rl.exp > now() THEN sentinel_rl.n + 1 ELSE 1 END, " +
       "exp = CASE WHEN sentinel_rl.exp > now() THEN sentinel_rl.exp ELSE now() + $2::interval END RETURNING n", [k, WIN]);
+    if (Math.random() < 0.02) await (await pg()).q("DELETE FROM sentinel_rl WHERE exp < now()");   /* sweep finished windows now and then so the table cannot grow without end */
     return r[0].n;
   },
   async ttl(k) { const r = (await (await pg()).q("SELECT ceil(extract(epoch FROM exp - now()))::int AS t FROM sentinel_rl WHERE k = $1", [k]))[0]; return Math.max(1, r ? r.t : LIMIT_WINDOW); },
@@ -194,12 +197,12 @@ function makeToken(u, role, hash) {
 async function session(req) {
   const h = String(req.headers.authorization || ""), t = h.slice(0, 7) === "Bearer " ? h.slice(7).trim() : "";
   if (!t) return null;
-  const [body, sig] = t.split(".");
-  if (!body || !sig) return null;
+  const [body, sig, extra] = t.split(".");
+  if (!body || !sig || extra !== undefined) return null;
   const want = Buffer.from(sign(body)), got = Buffer.from(sig);
   if (want.length !== got.length || !crypto.timingSafeEqual(want, got)) return null;
   let s; try { s = JSON.parse(Buffer.from(body, "base64url").toString("utf8")); } catch (e) { return null; }
-  if (!s || s.exp < Date.now() / 1000) return null;
+  if (!s || !(s.exp >= Date.now() / 1000)) return null;   /* a token with no expiry is refused too */
   const a = await db.account(s.u);
   return a && a.role === s.role && s.f === fingerprint(a.hash) ? { u: s.u, role: a.role } : null;
 }
@@ -239,10 +242,32 @@ async function readJson(req, max) {
 function sameOrigin(req) {
   try { return new URL(req.headers.origin).host === req.headers.host; } catch (e) { return false; }
 }
+/* The caller's address. On Vercel the platform writes these headers itself, so they can be believed. Anywhere else a client can type whatever it
+   likes into them, so only the socket address counts unless TRUST_PROXY=1 says a proxy we run sets them. */
 function clientIp(req) {
-  const h = req.headers;
-  return String(h["x-vercel-forwarded-for"] || h["x-real-ip"] || String(h["x-forwarded-for"] || "").split(",")[0] || (req.socket && req.socket.remoteAddress) || "?").trim();
+  const h = req.headers, sock = (req.socket && req.socket.remoteAddress) || "?";
+  const fwd = ON_VERCEL || process.env.TRUST_PROXY === "1" ? h["x-vercel-forwarded-for"] || h["x-real-ip"] || String(h["x-forwarded-for"] || "").split(",")[0] : "";
+  return String(fwd || sock).trim().slice(0, 64);
 }
+/* What the sign-in limits count an address as. One IPv6 customer is handed a whole /64 (18 quintillion addresses), so counting each address on
+   its own lets them start a fresh count whenever they like: IPv6 is counted by its /64. IPv4 (also when written ::ffff:1.2.3.4) is counted as it is. */
+function ipNet(ip) {
+  ip = String(ip).toLowerCase().replace(/%.*$/, "").slice(0, 64);
+  const v4 = ip.match(/^(?:::ffff:)?(\d+\.\d+\.\d+\.\d+)$/); if (v4) return v4[1];
+  if (!ip.includes(":")) return ip;
+  const [h, t] = ip.split("::"), head = h ? h.split(":") : [], tail = t ? t.split(":") : [];
+  const full = t === undefined ? head : head.concat(Array(Math.max(0, 8 - head.length - tail.length)).fill("0"), tail);
+  return full.slice(0, 4).map((x) => (parseInt(x, 16) || 0).toString(16)).join(":") + "::/64";
+}
+/* Addresses an account has signed in from before, kept as short hashes (newest last, at most KNOWN_MAX). The overall wrong-password ceiling does
+   not apply to them, so strangers filling that ceiling from many addresses cannot keep the real owner out. */
+const KNOWN_MAX = 64, knownTag = (acctKey, net) => crypto.createHash("sha256").update(acctKey + "|" + net).digest("base64url").slice(0, 16);
+async function isKnown(acctKey, net) { const l = await db.getKv("known:" + acctKey); return Array.isArray(l) && l.includes(knownTag(acctKey, net)); }
+async function addKnown(acctKey, net) {
+  const tag = knownTag(acctKey, net);
+  await updateKv("known:" + acctKey, (cur) => { const l = Array.isArray(cur) ? cur : []; return l.includes(tag) ? undefined : l.concat(tag).slice(-KNOWN_MAX); });
+}
+const forgetKnown = (acctKey) => db.setKv("known:" + acctKey, null);
 const wrap = (fn) => async (req, res) => {
   try { await fn(req, res); } catch (e) {
     if (e && e.status) return send(res, e.status, { error: e.error || "server" });
@@ -250,4 +275,4 @@ const wrap = (fn) => async (req, res) => {
   }
 };
 
-module.exports = { ROLES, LIMIT_IP, LIMIT_ACCT, LIMIT_ACCT_ALL, PW_MIN, db, hashPassword, verifyPassword, passwordProblem, dummyHash, makeToken, session, send, readJson, sameOrigin, clientIp, wrap, SESSION_TTL, verOf, updateKv };
+module.exports = { ROLES, LIMIT_IP, LIMIT_ACCT, LIMIT_ACCT_ALL, PW_MIN, db, hashPassword, verifyPassword, passwordProblem, dummyHash, makeToken, session, send, readJson, sameOrigin, clientIp, ipNet, isKnown, addKnown, forgetKnown, wrap, SESSION_TTL, verOf, updateKv };

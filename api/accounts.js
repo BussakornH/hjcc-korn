@@ -25,6 +25,7 @@ module.exports = L.wrap(async (req, res) => {
       if (all[u] && all[u].role === "admin" && Object.values(all).filter((a) => a.role === "admin").length < 2) return L.send(res, 400, { error: "last-admin" });
     }
     await L.db.putAccount(u, { role, hash: await L.hashPassword(p) });
+    await L.forgetKnown("acct:" + u);   /* a new password starts with no remembered addresses */
     return L.send(res, 200, { u, role });
   }
   if (req.method === "DELETE") {
@@ -33,6 +34,7 @@ module.exports = L.wrap(async (req, res) => {
     if (u === me.u) return L.send(res, 400, { error: "self" });
     if (all[u].role === "admin" && Object.values(all).filter((a) => a.role === "admin").length < 2) return L.send(res, 400, { error: "last-admin" });
     await L.db.delAccount(u);
+    await L.forgetKnown("acct:" + u);
     return L.send(res, 200, { ok: true });
   }
   L.send(res, 405, { error: "method" });
