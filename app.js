@@ -8,17 +8,18 @@
    Charts come from charts.js (window.HJCCCharts), drag and drop from dnd.js (window.HJCCDnD).
    ========================================================================== */
 const TOPICS = window.HJCC_TOPICS;
-/* access levels (enforced in this browser): delegate < chair < admin */
-const ROLE = (window.SentinelAuth && SentinelAuth.role()) || "delegate", RANK = { chair: 0, delegate: 1, admin: 2 };
-const DEL = ROLE === "delegate";   /* a delegate plays one side and never sees an enemy view */
+/* access levels (enforced in this browser and on the server): chair < admin. Delegates no longer sign in: the chairs run every force.
+   DEL stays as a constant so the old one-side views are simply never drawn. */
+const ROLE = (window.SentinelAuth && SentinelAuth.role()) || "chair", RANK = { chair: 0, admin: 1 };
+const DEL = false;
 const atLeast = r => RANK[ROLE] >= RANK[r];
-const deny = () => toast(ROLE === "chair" ? "The delegates' forces are view only for chairs." : "Only the Admin can do that.");
+const deny = () => toast("Only the Admin can do that.");
+/* a unit another chair keeps (copied from the server): HP, front and battles can change here, everything else only on its owner's screen */
+const foreign = u => !!(u && u.remote);
+const denyForeign = u => toast(`${u.name} belongs to ${u.remote}: only they can change that.`);
 document.documentElement.dataset.role = ROLE;
-/* forces are kept per sign-in, so two people on one browser never see each other's units; the old shared copy goes to the first person who signs in after the change */
+/* forces are kept per sign-in, so two people on one browser never see each other's units */
 const LEGACY_KEY = "hjcc-force-tracker-v1", KEY = LEGACY_KEY + ":" + String((window.SentinelAuth && SentinelAuth.user()) || "").toLowerCase().replace(/[^a-z0-9_.-]/g, "");
-try {
-  if (ROLE === "delegate" && localStorage.getItem(KEY) === null && localStorage.getItem(LEGACY_KEY) !== null && localStorage.getItem(LEGACY_KEY + "-claimed") === null) { localStorage.setItem(KEY, localStorage.getItem(LEGACY_KEY)); localStorage.setItem(LEGACY_KEY + "-claimed", KEY); }
-} catch (e) { /* storage blocked: the tracker runs without saving */ }
 const UIKEY = "hjcc-force-tracker-ui-v1";
 
 /* ---------- helpers ---------- */
@@ -178,8 +179,6 @@ const STAT_MAX = 1000, HP_MAX = 100000;
 /* ---------- change pipeline ---------- */
 const UNDO = [];
 function act(msg, fn, kind = "edit") {
-  if (ROLE === "chair" && kind !== "rules" && kind !== "battle") { deny(); render(); return; }   /* chairs are view only, except for the rules, formulas and applying battle results */
-  if (kind === "rules" && ROLE === "delegate") { deny(); return; }
   UNDO.push(JSON.stringify(S)); if (UNDO.length > 80) UNDO.shift();
   fn(D());
   const d = D();
@@ -406,7 +405,7 @@ function applyBattle() {
 /* ======================= RENDER ======================= */
 const PAGES = [
   { id: "overview", name: "Overview", icon: "grid" },
-  { id: "forces", name: "My Forces", icon: "layers" },
+  { id: "forces", name: "Forces", icon: "layers" },
   { id: "board", name: "Order of Battle", icon: "board" },
   { id: "morale", name: "Morale", icon: "pulse" },
   { id: "map", name: "Battle Map", icon: "map" },
@@ -417,42 +416,28 @@ const PAGES = [
 ];
 /* the Administrator runs the committee, not a side: accounts, access, topics and rules live in one control panel */
 const ADMIN_PAGES = [{ id: "status", name: "System status", icon: "pulse" }, { id: "control", name: "Control Panel", icon: "cog" }, { id: "sides", name: "Sides by day", icon: "board" }, { id: "rules", name: "Rules & Formulas", icon: "sliders" }];
-const pages = () => ROLE === "admin" ? ADMIN_PAGES : PAGES.filter(p => p.id !== "settings" && (p.id !== "rules" || ROLE === "chair") && (p.id !== "combat" || !DEL) && (p.id !== "forces" && p.id !== "roster" || ROLE !== "chair") && (p.id !== "sides" || ROLE === "chair") && (p.id !== "morale" || ROLE === "chair"));   /* allocation setup is not shown to delegates or chairs; rules are for chairs and the admin */
+const pages = () => ROLE === "admin" ? ADMIN_PAGES : PAGES.filter(p => p.id !== "settings");   /* a chair gets every page but the admin's settings */
 const seg = (a, opts, cur, key) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button class="${v === cur ? "on" : ""}" data-a="${a}" data-${key}="${v}" aria-pressed="${v === cur}">${esc(l)}</button>`).join("")}</div>`;
 const swBtn = (k, on) => `<span class="sw-w">${on ? "ON" : "OFF"}<button class="sw ${on ? "on" : ""}" role="switch" aria-checked="${!!on}" aria-label="${esc(RULE_L[k] || k)}" data-a="rule" data-k="${k}"><i></i></button></span>`;
 const frontOpts = (cur, noLost) => D().fronts.filter(f => !(noLost && f.id === "lost")).map(f => `<option value="${f.id}" ${f.id === cur ? "selected" : ""}>${esc(f.name)}</option>`).join("");
 const typeOpts = cur => D().branches.map(b => { const T = D().types.filter(t => t.branch === b.id); return T.length ? `<optgroup label="${esc(b.name)}">${T.map(t => `<option value="${t.id}" ${t.id === cur ? "selected" : ""}>${esc(t.name)} (${esc(t.code)})</option>`).join("")}</optgroup>` : ""; }).join("") + (() => { const O = D().types.filter(t => !D().branches.some(b => b.id === t.branch)); return O.length ? `<optgroup label="Other">${O.map(t => `<option value="${t.id}" ${t.id === cur ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</optgroup>` : ""; })();
 
-/* access levels: Admin does everything; Delegate is a normal user (no rules editing, no clearing data); Chair is view only */
-const EDIT_ACTS = new Set(["addUnits", "subAdd", "subEdit", "subDel", "sample", "hp", "hpSet", "frontAdd", "frontRename", "frontMove", "frontDel", "rule", "preset", "rtAdd", "rtDel", "rtReset", "dirAdd", "dirDel", "typeAdd", "typeDel", "typePush", "typesReset", "branchAdd", "branchDel", "sidePick", "imp", "clearForces", "resetTopic", "clearLog", "useTypeStats", "uDup", "uDel"]);   /* tray, swap, apply and undo are open to chairs: the combat calculator is theirs */
-const VIEW_INPUTS = new Set(["pick", "cm", "mult", "bonus", "q", "tv"]);
-function lockEdits(root) {
-  if (ROLE !== "chair" || !root || UI.page === "rules" || UI.page === "morale") return;
-  root.querySelectorAll("[data-c],[data-i]").forEach(el => { if (!VIEW_INPUTS.has(el.dataset.c || el.dataset.i)) el.disabled = true; });
-  root.querySelectorAll("[data-a]").forEach(b => { if (EDIT_ACTS.has(b.dataset.a)) { b.disabled = true; b.classList.add("locked"); b.title = "View only"; } });
-}
+/* access levels: the Admin runs rules, data and accounts; a chair runs every force, the map, morale, sides, rules and the combat calculator.
+   Only the admin-only buttons (data-need) are locked here. */
 function lockPage() {
-  const pg = $("page");
-  let msg = "";
-  if (UI.page === "rules" && ROLE === "delegate") {
-    Array.prototype.forEach.call(pg.children, c => c.setAttribute("inert", ""));
-    msg = "<b>View only.</b> Only the Admin and the chairs can edit the rules and formulas. You can read them here and use them in the combat calculator.";
-  } else if (ROLE === "chair" && UI.page !== "rules" && UI.page !== "combat" && UI.page !== "sides" && UI.page !== "map" && UI.page !== "morale") msg = "<b>View only.</b> The forces belong to the delegates: chairs can see them here but not change them. The map, morale, sides, rules and combat calculator are yours.";
-  if (msg) pg.insertAdjacentHTML("afterbegin", '<div class="lockbar" role="note">' + msg + "</div>");
-  pg.querySelectorAll("[data-need]").forEach(b => { if (ROLE !== "admin") { b.disabled = true; b.classList.add("locked"); b.title = "Admin access needed"; } });
-  lockEdits(document);
+  $("page").querySelectorAll("[data-need]").forEach(b => { if (ROLE !== "admin") { b.disabled = true; b.classList.add("locked"); b.title = "Admin access needed"; } });
 }
 function accessPanel() {
-  const cols = ["delegate", "chair", "admin"], rows = [
-    ["See forces, order of battle, battle overview and charts", [1, 1, 0]],
-    ["Use the combat calculator", [0, 1, 0]],
-    ["Add, edit and move units; apply battle results; set allocation and fronts", [1, 0, 0]],
-    ["Set morale and sides by day; draw the battle map and place troops", [0, 1, 0]],
-    ["Edit rules, formulas, classes and sub classes", [0, 1, 1]],
-    ["Create, reset and remove accounts", [0, 0, 1]]
+  const cols = ["chair", "admin"], rows = [
+    ["See forces, order of battle, battle overview and charts", [1, 0]],
+    ["Add, edit and move units; load booklet forces; apply battle results; set fronts", [1, 0]],
+    ["Use the combat calculator", [1, 0]],
+    ["Set morale and sides by day; draw the battle map and place troops", [1, 0]],
+    ["Edit rules, formulas, classes and sub classes", [1, 1]],
+    ["Create, reset and remove accounts; import backups; clear data", [0, 1]]
   ], cap = x => x[0].toUpperCase() + x.slice(1);
   const tbl = `<table class="rtbl acc"><thead><tr><th>What you can do</th>${cols.map(c => `<th class="${c === ROLE ? "me" : ""}">${cap(c)}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr><td>${r[0]}</td>${cols.map((c, i) => `<td class="${c === ROLE ? "me" : ""}">${r[1][i] ? "Yes" : "&mdash;"}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
-  return `<section class="panel"><div class="panel-h"><div><h3>${ROLE === "admin" ? "Access levels" : "Your access: " + cap(ROLE)}</h3><p>The Admin runs the committee and does not command a side. Delegates use the tracker as normal users. Chairs see every side's forces and run the map, morale, sides, rules and combat calculator. Rules and formulas are shared: a change by the Admin or a chair reaches every screen.</p></div></div>${tbl}</section>`;
+  return `<section class="panel"><div class="panel-h"><div><h3>${ROLE === "admin" ? "Access levels" : "Your access: " + cap(ROLE)}</h3><p>The Admin runs the committee and does not command a side. Delegates no longer sign in: the chairs command every side's forces and run the map, morale, sides, rules and combat calculator. Each chair's units are shared with the other chairs, who see them but cannot change them. Rules and formulas are shared: a change by the Admin or a chair reaches every screen.</p></div></div>${tbl}</section>`;
 }
 
 /* ---------- ADMIN: control panel ---------- */
@@ -555,19 +540,19 @@ function pgControl() {
   const asg = (ALLOC && ALLOC.assigned) || {}, taken = {}; Object.keys(asg).forEach(u => Object.values(asg[u]).forEach(id => { taken[id] = u; }));
   const me = SentinelAuth.user(), roleN = r => r[0].toUpperCase() + r.slice(1);
   const n = r => (ACC || []).filter(a => a.role === r).length;
-  const rows = ACC === false ? `<tr><td colspan="4" class="muted">Loading accounts…</td></tr>` : (ACC.length ? [["admin", "Admin"], ["chair", "Chairs"], ["delegate", "Delegates"]].map(([rl, gl]) => { const G = ACC.filter(a => a.role === rl); return G.length ? `<tr class="grp"><td colspan="4">${gl} · ${G.length}</td></tr>` + G.map(a => `<tr><td>${esc(a.u)}${a.u === me ? ' <span class="muted">(you)</span>' : ""}</td><td>${roleN(esc(a.role))}</td><td>${a.role === "delegate" && ALLOC ? `<div class="cp-chars">${Object.values(TOPICS).map(T => `<select class="sel" data-c="cpChar" data-u="${esc(a.u)}" data-t="${T.id}" aria-label="${esc(T.title)} character for ${esc(a.u)}">${charOpts((asg[a.u] || {})[T.id] || "", taken, T.id)}</select>`).join("")}</div>` : `<span class="muted">${a.role === "delegate" ? "…" : "—"}</span>`}</td><td style="text-align:right"><button class="btn sm" data-a="cpFill" data-u="${esc(a.u)}" data-r="${esc(a.role)}">Reset password</button> <button class="btn sm danger" data-a="cpDel" data-u="${esc(a.u)}" ${a.u === me ? "disabled" : ""}>Remove</button></td></tr>`).join("") : ""; }).join("") : `<tr><td colspan="4" class="muted">${esc(accErr || "No accounts.")}</td></tr>`);
+  const rows = ACC === false ? `<tr><td colspan="4" class="muted">Loading accounts…</td></tr>` : (ACC.length ? [["admin", "Admin"], ["chair", "Chairs"], ["delegate", "Former delegates (cannot sign in)"]].map(([rl, gl]) => { const G = ACC.filter(a => a.role === rl); return G.length ? `<tr class="grp"><td colspan="4">${gl} · ${G.length}</td></tr>` + G.map(a => `<tr><td>${esc(a.u)}${a.u === me ? ' <span class="muted">(you)</span>' : ""}</td><td>${roleN(esc(a.role))}</td><td>${a.role === "delegate" && ALLOC ? `<div class="cp-chars">${Object.values(TOPICS).map(T => `<select class="sel" data-c="cpChar" data-u="${esc(a.u)}" data-t="${T.id}" aria-label="${esc(T.title)} character for ${esc(a.u)}">${charOpts((asg[a.u] || {})[T.id] || "", taken, T.id)}</select>`).join("")}</div>` : `<span class="muted">${a.role === "delegate" ? "…" : "—"}</span>`}</td><td style="text-align:right"><button class="btn sm" data-a="cpFill" data-u="${esc(a.u)}" data-r="${esc(a.role)}">Reset password</button> <button class="btn sm danger" data-a="cpDel" data-u="${esc(a.u)}" ${a.u === me ? "disabled" : ""}>Remove</button></td></tr>`).join("") : ""; }).join("") : `<tr><td colspan="4" class="muted">${esc(accErr || "No accounts.")}</td></tr>`);
   return `<div class="pg-head"><div><div class="eyebrow">Administrator</div><h2 class="pg-h">Control panel</h2><p class="pg-p">Accounts and access levels for the whole committee. Rules and formulas are under Rules &amp; Formulas.</p></div></div>` + `
-  <section class="panel"><div class="panel-h"><div><h3>Accounts</h3><p>${ACC ? `${plural(n("delegate"), "delegate")} · ${plural(n("chair"), "chair")} · ${plural(n("admin"), "admin")}` : "Everyone who can sign in"}</p></div></div>
+  <section class="panel"><div class="panel-h"><div><h3>Accounts</h3><p>${ACC ? `${plural(n("chair"), "chair")} · ${plural(n("admin"), "admin")}` : "Everyone who can sign in"}</p></div></div>
     <table class="rtbl full"><thead><tr><th>Username</th><th>Access</th><th>Character</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     <div class="fgrid" style="margin-top:14px">
       <div class="fld"><label for="cp-u">Username</label><input id="cp-u" maxlength="32" autocomplete="off" spellcheck="false"></div>
       <div class="fld"><label for="cp-p">Password</label><input id="cp-p" type="password" maxlength="200" autocomplete="new-password"></div>
-      <div class="fld"><label for="cp-r">Access</label><select id="cp-r"><option value="delegate">Delegate</option><option value="chair">Chair</option><option value="admin">Admin</option></select></div>
+      <div class="fld"><label for="cp-r">Access</label><select id="cp-r"><option value="chair">Chair</option><option value="admin">Admin</option></select></div>
       <div class="fld" style="align-self:end"><button class="btn primary" data-a="cpAdd">Save account</button></div>
     </div>
     <p class="muted" style="font-size:12.5px">Saving an existing username resets its password and access level.</p></section>
 ` + `
-  <section class="panel"><div class="panel-h"><div><h3>Reset for everyone</h3><p>Wipes the troops on the map, the delegates' and chairs' forces, battle lines, city sides and sides by day. Accounts and characters stay. Every browser clears its own forces the next time it loads.</p></div></div>
+  <section class="panel"><div class="panel-h"><div><h3>Reset for everyone</h3><p>Wipes the troops on the map, the chairs' forces, battle lines, city sides and sides by day. Accounts and characters stay. Every browser clears its own forces the next time it loads.</p></div></div>
     <div class="data-btns"><button class="btn danger" data-a="cpReset" data-s="t1">Reset ${esc(TOPICS.t1.title)}</button><button class="btn danger" data-a="cpReset" data-s="t2">Reset ${esc(TOPICS.t2.title)}</button><button class="btn danger" data-a="cpReset" data-s="all">Reset everything</button></div></section>` + accessPanel();
 }
 
@@ -593,7 +578,7 @@ function render() {
   CH.bind($("page"));
   if (fid) { const e = $(fid); if (e && e !== document.activeElement) { e.focus({ preventScroll: true }); if (ss && e.setSelectionRange) try { e.setSelectionRange(ss[0], ss[1]); } catch (x) { /* ignore */ } } }
   renderSave();
-  if (ROLE !== "admin" && typeof mpTroopsLoad === "function") { if (!mpTLoaded) mpTroopsLoad(); else mpTroopSync(); if (ROLE === "delegate") mpForcesPush(); if (typeof mpPointsLoad === "function" && Date.now() - mpPtAt > 15000) mpPointsLoad(); }   /* the chairs' units and the troops on the map stay one thing */
+  if (ROLE !== "admin" && typeof mpTroopsLoad === "function") { if (!mpTLoaded) mpTroopsLoad(); else mpTroopSync(); if (ROLE === "chair") mpForcesPush(); if (typeof mpPointsLoad === "function" && Date.now() - mpPtAt > 15000) mpPointsLoad(); }   /* the chairs' units and the troops on the map stay one thing */
 }
 /* the top bar names the account that is signed in: its role, then its username when that adds something */
 function acctLbl() {
@@ -607,8 +592,8 @@ function chrome() {
   $("topics").innerHTML = Object.values(TOPICS).map(T => `<button class="topic ${S.topic === T.id ? "on" : ""}" data-a="topic" data-t="${T.id}" aria-pressed="${S.topic === T.id}"><span class="eyebrow">Topic ${T.num}</span><b>${esc(T.title)}</b><small>${T.year}</small></button>`).join("");
   const ct = { forces: d.units.filter(u => u.side === "me" && !lost(u)).length, combat: sl.A.length + sl.D.length };
   $("nav").innerHTML = pages().map(p => `<button class="nav-i ${p.id === UI.page ? "on" : ""}" data-a="go" data-p="${p.id}" ${p.id === UI.page ? 'aria-current="page"' : ""}>${ico(p.icon)}<span>${p.name}</span>${ct[p.id] ? `<span class="ct">${ct[p.id]}</span>` : ""}</button>`).join("");
-  if (ROLE === "chair") $("footNote").innerHTML = "SENTINEL Joint Operations Center &middot; Historical Joint Crisis Committee simulation. Forces are reported by the delegates; morale and every outcome are set by the chairs. The map, morale, sides and rules are shared with every screen.";
-  $("sideFoot").innerHTML = `${DEL ? `<div class="eyebrow">Allocation</div><div><b>${d.alloc.delegation ? esc(d.alloc.delegation) : "Pending"}</b>${d.alloc.portfolio ? ` · ${esc(d.alloc.portfolio)}` : ""}</div>` : ""}${DEL ? "" : `<div>${esc(sideLbl("me"))} <span class="muted">v</span> ${esc(sideLbl("foe"))}</div>`}<div class="sf-n">${DEL ? "Your own running figures. The chairs decide every outcome." : "Forces are reported by the delegates. Morale and every outcome are set by the chairs."}</div>`;
+  if (ROLE === "chair") $("footNote").innerHTML = "SENTINEL Joint Operations Center &middot; Historical Joint Crisis Committee simulation. The chairs command every force and set morale and every outcome. Your units, the map, morale, sides and rules are shared with the other chairs.";
+  $("sideFoot").innerHTML = `${DEL ? `<div class="eyebrow">Allocation</div><div><b>${d.alloc.delegation ? esc(d.alloc.delegation) : "Pending"}</b>${d.alloc.portfolio ? ` · ${esc(d.alloc.portfolio)}` : ""}</div>` : ""}${DEL ? "" : `<div>${esc(sideLbl("me"))} <span class="muted">v</span> ${esc(sideLbl("foe"))}</div>`}<div class="sf-n">${DEL ? "Your own running figures. The chairs decide every outcome." : "The chairs command every force and set morale and every outcome."}</div>`;
   $("pageTitle").textContent = P.name; $("pageSub").textContent = acctLbl();
   $("undoBtn").disabled = !UNDO.length;
   const th = themeNow(); $("dayBtn").classList.toggle("on", th === "light"); $("nightBtn").classList.toggle("on", th === "dark");
@@ -630,7 +615,7 @@ const ph = (k, title, sub, tools = "", fsub) => { const f = isFold(k); return `<
 const foldAll = keys => `<button class="btn sm" data-a="foldAll" data-k="${keys.join(",")}" data-v="1">Collapse all</button><button class="btn sm" data-a="foldAll" data-k="${keys.join(",")}" data-v="0">Expand all</button>`;
 function emptyState() {
   return `<div class="panel empty"><div class="eyebrow">${esc(topicLbl())}</div><h2>No forces recorded yet</h2>
-    <p>Allocations are still pending. When the chairs publish them, add your units.</p>
+    <p>Load a country's booklet forces, or add units by hand.</p>
     <div class="row-btns">${bookletBtn()}<button class="btn ${bookletFor() ? "" : "primary "}lg" data-a="addUnits">${ico("plus")} Add units</button><button class="btn lg" data-a="sample">Load sample forces (demo)</button></div></div>`;
 }
 
@@ -755,7 +740,7 @@ function pgOverview() {
           <div class="stat-big">${strP}<small>%</small></div><div class="stat-lbl">Combat strength of ${esc(sideLbl(s))} · ${fx(T.hp)} of ${fx(T.max)} HP</div>
           <div class="stat-big">${T.n}</div><div class="stat-lbl">Units in the field · ${T.lost} lost</div>
           ${showMorale() ? `<div class="stat-big sm">${fx(d.sides[s].morale)}<small>%</small></div><div class="stat-lbl">Morale</div>` : ""}
-          ${ROLE === "chair" ? "" : `<button class="btn primary" data-a="go" data-p="forces">${ico("layers")} My forces</button>`}
+          <button class="btn primary" data-a="go" data-p="forces">${ico("layers")} ${ROLE === "chair" ? "Forces" : "My forces"}</button>
         </div>
         <div class="ov-r">
           ${CH.area(series, H.map(h => h.t), { label: "Force strength over time", empty: "The chart fills in as your forces change.<br>Every move, HP change and battle adds a point." })}
@@ -773,7 +758,7 @@ function pgOverview() {
   </section>
   <section class="tiles">${tiles}</section>
   <section class="ov-mid">
-    <div class="panel${foldCls("ov-types")}">${ph("ov-types", "Units by sub class", "How many are left in the field, and how many were lost", (ROLE === "chair" ? "" : '<button class="lnk" data-a="go" data-p="forces">Details</button>'), sumTypes)}<div class="fold-body">${typeBars(s)}</div></div>
+    <div class="panel${foldCls("ov-types")}">${ph("ov-types", "Units by sub class", "How many are left in the field, and how many were lost", '<button class="lnk" data-a="go" data-p="forces">Details</button>', sumTypes)}<div class="fold-body">${typeBars(s)}</div></div>
     <div class="panel${foldCls("ov-ready")}">${ph("ov-ready", "Readiness", "Units by strength (HP left as a share of full HP)", "", sumReady)}<div class="fold-body">${readiness(s)}</div></div>
   </section>
   <section class="ov-bot">
@@ -833,9 +818,10 @@ function battleTable(n) {
 
 /* ---------- MY FORCES: own forces by class and sub class ----------
    Classes fold with UI.fold["mf:<class>"] (open by default); sub classes open with UI.open["mf:<sub class>"] (closed by default). */
+const forceSide = () => UI.rosterSide === "foe" ? "foe" : "me";   /* which side the Forces page shows */
 function pgForces() {
-  const d = D(), U = d.units.filter(u => u.side === "me"), T = tot("me");
-  const sumHtml = `<div class="ro-sum"><div style="--bc:var(--me)"><span>${esc(sideLbl("me"))}</span><b>${T.n} <small>of ${T.all}</small></b><span>units in the field</span></div><div><span>Hit points</span><b>${fx(T.hp)} <small>/ ${fx(T.max)}</small></b><span>${Math.round(pc(T.hp, T.max))}% of starting HP, losses included</span></div><div><span>Attack power</span><b>${fx(T.atk)}</b><span>effective, in the field</span></div><div><span>In reserve</span><b>${T.reserve}</b><span>not deployed</span></div><div><span>Lost</span><b>${T.lost}</b><span>destroyed</span></div></div>`;
+  const d = D(), fs = forceSide(), U = d.units.filter(u => u.side === fs), T = tot(fs);
+  const sumHtml = `<div class="ro-sum"><div style="--bc:${sideCol(fs)}"><span>${esc(sideLbl(fs))}</span><b>${T.n} <small>of ${T.all}</small></b><span>units in the field</span></div><div><span>Hit points</span><b>${fx(T.hp)} <small>/ ${fx(T.max)}</small></b><span>${Math.round(pc(T.hp, T.max))}% of starting HP, losses included</span></div><div><span>Attack power</span><b>${fx(T.atk)}</b><span>effective, in the field</span></div><div><span>In reserve</span><b>${T.reserve}</b><span>not deployed</span></div><div><span>Lost</span><b>${T.lost}</b><span>destroyed</span></div></div>`;
   const cls = d.branches.map(b => {
     const BU = U.filter(u => u.branch === b.id), subs = d.types.filter(t => t.branch === b.id), custom = BU.filter(u => !subs.some(t => t.id === u.type));
     const al = BU.filter(u => !lost(u)), hp = sum(al.map(u => u.hp)), mx = sum(al.map(u => u.maxhp)), k = "mf:" + b.id, f = isFold(k);
@@ -848,8 +834,8 @@ function pgForces() {
         <div class="mf-add"><button class="btn sm" data-a="subAdd" data-b="${b.id}">${ico("plus")} Add sub class to ${esc(b.name)}</button></div>
       </div></section>`;
   }).join("");
-  return head("My forces", "Your own forces by class and sub class: how many units are left, at what strength and HP. Each row shows where its units are. Open a sub class to see and adjust each unit; add sub classes as the chairs announce them. All sub class stats are placeholders until the chairs' booklet arrives.",
-    `<button class="btn sm" data-a="mfAll" data-v="0">Collapse all</button><button class="btn sm" data-a="mfAll" data-v="1">Expand all</button><button class="btn sm primary" data-a="addUnits" data-s="me">${ico("plus")} Add units</button>`) + sumHtml + cls;
+  return head(ROLE === "chair" ? "Forces" : "My forces", "Each side's forces by class and sub class: how many units are left, at what strength and HP. Each row shows where its units are. Open a sub class to see and adjust each unit; add sub classes as the chairs announce them. All sub class stats are placeholders until the chairs' booklet arrives.",
+    seg("rosterSide", [["me", sideLbl("me")], ["foe", sideLbl("foe")]], fs, "s") + `<button class="btn sm" data-a="mfAll" data-v="0">Collapse all</button><button class="btn sm" data-a="mfAll" data-v="1">Expand all</button><button class="btn sm primary" data-a="addUnits" data-s="${fs}">${ico("plus")} Add units</button>`) + sumHtml + cls;
 }
 function subBlock(t, units, b) {
   const k = "mf:" + (t ? t.id : "custom-" + b.id), open = !!UI.open[k], al = units.filter(u => !lost(u)), hp = sum(al.map(u => u.hp)), mx = sum(al.map(u => u.maxhp)), st = pc(hp, mx);
@@ -862,9 +848,9 @@ function subBlock(t, units, b) {
       <div class="rr-str">${al.length ? `<div class="hpbar"><i class="t-${tierKey(st)}" style="width:${st}%"></i></div><span>${Math.round(st)}%</span>` : ""}</div>
       <div class="mf-hp">${al.length ? `HP ${fx(hp)} / ${fx(mx)}<small>ATK ${fx(sum(al.map(u => eff(u).eff)))}</small>` : ""}</div>
       <div class="mf-where">${Object.entries(countBy(al, u => frontName(u.front))).map(([f, n]) => `${esc(f)} <b>${n}</b>`).join(" · ")}</div>
-      <div class="mf-tools">${t ? `<button class="icon-btn sm" data-a="subEdit" data-id="${t.id}" aria-label="Edit ${esc(name)}" title="Edit sub class">${ico("edit")}</button><button class="btn sm" data-a="addUnits" data-s="me" data-t="${t.id}">${ico("plus")} Add</button>` : ""}</div>
+      <div class="mf-tools">${t ? `<button class="icon-btn sm" data-a="subEdit" data-id="${t.id}" aria-label="Edit ${esc(name)}" title="Edit sub class">${ico("edit")}</button><button class="btn sm" data-a="addUnits" data-s="${forceSide()}" data-t="${t.id}">${ico("plus")} Add</button>` : ""}</div>
     </div>
-    ${open ? `<div class="mf-units">${units.length ? units.slice().sort(byOrd).map(unitRow).join("") : `<div class="none">No ${esc(name)} units yet. <button class="lnk" data-a="addUnits" data-s="me" data-t="${t ? t.id : ""}">Add some</button></div>`}${t ? `<div class="mf-stats">Sub class stats for new units: ATK ${fx(t.atk)} · HP ${fx(t.hp)} · MOV ${fx(t.mov)} · RNG ${fx(t.rng)}</div>` : ""}</div>` : ""}
+    ${open ? `<div class="mf-units">${units.length ? units.slice().sort(byOrd).map(unitRow).join("") : `<div class="none">No ${esc(name)} units yet. <button class="lnk" data-a="addUnits" data-s="${forceSide()}" data-t="${t ? t.id : ""}">Add some</button></div>`}${t ? `<div class="mf-stats">Sub class stats for new units: ATK ${fx(t.atk)} · HP ${fx(t.hp)} · MOV ${fx(t.mov)} · RNG ${fx(t.rng)}</div>` : ""}</div>` : ""}
   </div>`;
 }
 function autoCode(name) {
@@ -1155,7 +1141,7 @@ function pgSettings() {
       ${sideF("me")}${sideF("foe")}</div>
     <div class="panel"><div class="panel-h"><div><h3>Fronts</h3><p>The columns of the Order of Battle board. Reserve and Destroyed are fixed.</p></div><button class="btn sm" data-a="frontAdd">${ico("plus")} Add front</button></div>${fronts}</div>
     <div class="panel"><div class="panel-h"><div><h3>Backup &amp; data</h3><p>Everything is saved in this browser on this device after every change. Export a backup before the committee and to move to another device.</p></div></div>
-      <div class="data-btns"><button class="btn primary" data-a="exp">${ico("down")} Export backup</button><button class="btn" data-a="imp" data-need="admin">${ico("up")} Import backup</button><button class="btn" data-a="sample">Load sample forces (demo)</button>${bookletFor() ? `<button class="btn" data-a="booklet">Load booklet forces</button>` : ""}</div>
+      <div class="data-btns"><button class="btn primary" data-a="exp">${ico("down")} Export backup</button><button class="btn" data-a="imp" data-need="admin">${ico("up")} Import backup</button><button class="btn" data-a="sample">Load sample forces (demo)</button>${bookletFor() ? `<button class="btn" data-a="bookPick">Load booklet forces</button>` : ""}</div>
       <div class="data-btns"><button class="btn danger" data-a="clearForces" data-need="admin">Clear forces and history</button><button class="btn danger" data-a="resetTopic" data-need="admin">Reset everything in this topic</button></div>
       <p class="muted" style="font-size:12.5px">“Clear forces and history” keeps your allocation, rules, classes, sub classes and fronts. Both act on ${esc(topicLbl())} only, and Undo brings the data back.</p></div>
   </section>
@@ -1165,7 +1151,14 @@ function pgSettings() {
 /* ---------- unit editor drawer ---------- */
 function openDrawer(id) { if (!byId(id)) return; UI.drawer = id; renderDrawer(); const c = document.querySelector("#drawer .dr-h .icon-btn"); if (c) c.focus(); }
 function closeDrawer() { const id = UI.drawer; UI.drawer = null; renderDrawer(); const c = id && document.querySelector(`.card[data-id="${id}"]`); if (c) c.focus(); }
-function renderDrawer() { renderDrawerRaw(); lockEdits($("drawer")); }
+function renderDrawer() { renderDrawerRaw(); lockForeign(); }
+/* another chair's unit: its HP and front can change here (battles, damage), the rest stays as its owner set it */
+function lockForeign() {
+  const u = UI.drawer && byId(UI.drawer), h = $("drawer"); if (!foreign(u) || !h) return;
+  h.querySelectorAll('[data-c="uf"]').forEach(el => { if (el.dataset.k !== "hp" && el.dataset.k !== "front") el.disabled = true; });
+  h.querySelectorAll('[data-a="useTypeStats"],[data-a="uDel"]').forEach(b => { b.disabled = true; b.classList.add("locked"); b.title = "Only " + u.remote + " can change this"; });
+  const f = h.querySelector(".dr-form"); if (f) f.insertAdjacentHTML("afterbegin", `<div class="lockbar" role="note"><b>${esc(u.remote)}'s unit.</b> You can change its HP and front and use it in battles. Only ${esc(u.remote)} can rename it, change its stats or remove it.</div>`);
+}
 function renderDrawerRaw() {
   const host = $("drawer"), u = UI.drawer ? byId(UI.drawer) : null;
   if (!u) { UI.drawer = null; host.classList.remove("on"); host.innerHTML = ""; return; }
@@ -1203,7 +1196,7 @@ function askText(title, label, val, cb) {
 }
 function openAdd(front, side, typeId) {
   const d = D(), t0 = d.types.find(t => t.id === typeId) || d.types[0];
-  if (side !== "me" && side !== "foe") side = (UI.page === "board" && UI.boardSide === "foe") || (UI.page === "roster" && UI.rosterSide === "foe") ? "foe" : "me";
+  if (side !== "me" && side !== "foe") side = (UI.page === "board" && UI.boardSide === "foe") || ((UI.page === "roster" || UI.page === "forces") && UI.rosterSide === "foe") ? "foe" : "me";
   openModal(`<h2>Add units</h2><p class="muted">One card is made per unit. Stats come from the sub class (placeholders until your allocation and the chairs' booklet arrive) and can be changed below.</p>
   <div class="fgrid">
     <div class="fld span4" ${DEL ? "hidden" : ""}><span class="lbl">Side</span><div class="radio-seg"><label><input type="radio" name="adSide" value="me" ${side === "me" ? "checked" : ""}>${esc(sideLbl("me"))}</label><label><input type="radio" name="adSide" value="foe" ${side === "foe" ? "checked" : ""}>${esc(sideLbl("foe"))} (enemy)</label></div></div>
@@ -1255,17 +1248,28 @@ function loadSample(quiet) {
   }, "data");
   if (quiet !== true) toast("Sample forces loaded");
 }
-/* the chairs' booklet order of battle for this delegate's character (presets.js, topic 2): named units at the booklet's strength, in Reserve until deployed.
-   A unit the booklet lists as "Not Found" (0%) is not raised yet, so it is left out rather than put on the books as already destroyed. */
-const bookletFor = () => (TOPICS[S.topic].booklets || {})[D().alloc.delegation] || null;
-const bookletBtn = () => bookletFor() ? `<button class="btn primary lg" data-a="booklet">Load ${esc(bookletFor().country)} booklet forces</button>` : "";
-function loadBooklet() {
-  const B = bookletFor(); if (!B) return;
+/* the chairs' booklet order of battle for a country (presets.js, topic 2): named units at the booklet's strength, in Reserve until deployed.
+   A unit the booklet lists as "Not Found" (0%) is not raised yet, so it is left out rather than put on the books as already destroyed.
+   A chair picks the country and the side to put it on. */
+const BOOKS = () => TOPICS[S.topic].booklets || {};
+const bookletFor = () => Object.keys(BOOKS()).length ? true : null;
+const bookletBtn = () => bookletFor() ? `<button class="btn primary lg" data-a="bookPick">Load booklet forces</button>` : "";
+function openBooklet() {
+  const B = BOOKS(), side = UI.page === "board" && UI.boardSide === "foe" || (UI.page === "roster" || UI.page === "forces") && UI.rosterSide === "foe" ? "foe" : "me";
+  openModal(`<h2>Load booklet forces</h2><p class="muted">The country's units from the chairs' booklet, at the booklet's strength, in Reserve. Units the booklet lists as not found are left out. They are added to the forces already there.</p>
+  <div class="fgrid">
+    <div class="fld span4"><label for="bkKey">Booklet</label><select id="bkKey">${Object.keys(B).map(k => `<option value="${esc(k)}">${esc(B[k].country)} · ${esc(k)} (${plural(B[k].units.filter(u => u[2] > 0).length, "unit")})</option>`).join("")}</select></div>
+    <div class="fld span4"><span class="lbl">Side</span><div class="radio-seg"><label><input type="radio" name="bkSide" value="me" ${side === "me" ? "checked" : ""}>${esc(sideLbl("me"))}</label><label><input type="radio" name="bkSide" value="foe" ${side === "foe" ? "checked" : ""}>${esc(sideLbl("foe"))}</label></div></div>
+  </div>
+  <div class="m-act"><button class="btn" data-a="modalClose">Cancel</button><button class="btn primary" data-a="bookGo">Load forces</button></div>`);
+}
+function loadBooklet(key, side) {
+  const B = BOOKS()[key]; if (!B) return; side = side === "foe" ? "foe" : "me";
   const raised = B.units.filter(u => u[2] > 0), absent = B.units.length - raised.length;
-  act(`Booklet forces loaded: ${B.country}, ${plural(raised.length, "unit")}${absent ? ` (${absent} not found, not added)` : ""}`, d => {
+  act(`Booklet forces loaded: ${B.country} for ${sideLbl(side)}, ${plural(raised.length, "unit")}${absent ? ` (${absent} not found, not added)` : ""}`, d => {
     raised.forEach(([code, name, pct]) => {
       const t = d.types.find(x => x.code === code); if (!t) return;
-      d.units.push(mkUnit(d, { side: "me", t, name, front: "reserve", hp: r2(t.hp * pct / 100) }));
+      d.units.push(mkUnit(d, { side, t, name, front: "reserve", hp: r2(t.hp * pct / 100) }));
     });
   }, "data");
   toast("Booklet forces loaded");
@@ -1281,7 +1285,7 @@ function exportJSON() {
   const blob = new Blob([JSON.stringify({ app: "hjcc-force-tracker", v: 1, exported: new Date().toISOString(), data: S }, null, 1)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `sentinel-backup-${stamp()}.json`;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-  if (ROLE !== "chair") { addLog(D(), "Backup exported", "data"); save(); } render(); toast("Backup downloaded");
+  addLog(D(), "Backup exported", "data"); save(); render(); toast("Backup downloaded");
 }
 function importJSON(file) {
   const rd = new FileReader();
@@ -1388,7 +1392,8 @@ const A = {
   },
   mfAll: el => { const on = el.dataset.v === "1", d = D(); d.branches.forEach(b => { if (on) delete UI.fold["mf:" + b.id]; else UI.fold["mf:" + b.id] = true; }); d.types.forEach(t => { if (on) UI.open["mf:" + t.id] = true; else delete UI.open["mf:" + t.id]; }); saveUI(); render(); },
   sample: el => D().units.length ? arm(el, loadSample) : loadSample(),
-  booklet: el => D().units.length ? arm(el, loadBooklet) : loadBooklet(),
+  bookPick: () => openBooklet(),
+  bookGo: () => { const k = $("bkKey") && $("bkKey").value, s = (document.querySelector("input[name=bkSide]:checked") || {}).value; closeModal(); loadBooklet(k, s); },
   moraleStep: el => setMorale(el.dataset.s, D().sides[el.dataset.s].morale + num(el.dataset.d)),
   ovSide: el => { UI.ovSide = el.dataset.s; saveUI(); render(); },
   ovMetric: el => { UI.ovMetric = el.dataset.m; saveUI(); render(); },
@@ -1451,9 +1456,9 @@ const A = {
   modalClose: () => closeModal(),
   askGo: () => { const v = ($("askIn").value || "").trim().slice(0, 40), cb = UI.askCb; if (!v) { $("askIn").focus(); return; } closeModal(); if (cb) cb(v); },
   addGo: () => submitAdd(),
-  useTypeStats: el => { const u = byId(el.dataset.id), t = u && D().types.find(x => x.id === u.type); if (!t) return; act(`${u.name}: stats reset to the ${t.name} sub class`, d => { const x = d.units.find(y => y.id === u.id), f = x.maxhp > 0 ? x.hp / x.maxhp : 1; Object.assign(x, { atk: t.atk, mov: t.mov, rng: t.rng, maxhp: t.hp, hp: r2(t.hp * f) }); }, "edit"); },
-  uDup: el => { const u = byId(el.dataset.id); if (!u) return; const base = u.name.replace(/\s+\d+$/, ""); act(`Duplicated ${u.name}`, d => { const x = { ...u, id: uid("u"), name: `${base} ${nextNum(d, base)}`, ord: num(u.ord) + 0.5 }; d.units.push(x); UI.drawer = x.id; }, "add"); },
-  uDel: el => arm(el, () => { const u = byId(el.dataset.id); if (!u) return; UI.drawer = null; UI.sel.att = UI.sel.att.filter(x => x !== u.id); UI.sel.def = UI.sel.def.filter(x => x !== u.id); act(`${u.name} removed from the roster`, d => { d.units = d.units.filter(x => x.id !== u.id); }, "remove"); })
+  useTypeStats: el => { const u = byId(el.dataset.id), t = u && D().types.find(x => x.id === u.type); if (!t) return; if (foreign(u)) { denyForeign(u); return; } act(`${u.name}: stats reset to the ${t.name} sub class`, d => { const x = d.units.find(y => y.id === u.id), f = x.maxhp > 0 ? x.hp / x.maxhp : 1; Object.assign(x, { atk: t.atk, mov: t.mov, rng: t.rng, maxhp: t.hp, hp: r2(t.hp * f) }); }, "edit"); },
+  uDup: el => { const u = byId(el.dataset.id); if (!u) return; const base = u.name.replace(/\s+\d+$/, ""); act(`Duplicated ${u.name}`, d => { const x = { ...u, id: uid("u"), name: `${base} ${nextNum(d, base)}`, ord: num(u.ord) + 0.5 }; delete x.remote; delete x.mirror; delete x.fsv; d.units.push(x); UI.drawer = x.id; }, "add"); },
+  uDel: el => arm(el, () => { const u = byId(el.dataset.id); if (!u) return; if (foreign(u)) { denyForeign(u); return; } UI.drawer = null; UI.sel.att = UI.sel.att.filter(x => x !== u.id); UI.sel.def = UI.sel.def.filter(x => x !== u.id); act(`${u.name} removed from the roster`, d => { d.units = d.units.filter(x => x.id !== u.id); }, "remove"); })
 };
 const UF_L = { side: "side", front: "front", type: "sub class", branch: "class", hp: "HP", maxhp: "full HP", atk: "attack", mov: "movement", rng: "range" };
 const C = {
@@ -1471,6 +1476,7 @@ const C = {
   uf: el => {
     const id = UI.drawer, u = byId(id); if (!u) return;
     const k = el.dataset.k; let v = el.value;
+    if (foreign(u) && k !== "hp" && k !== "front") { denyForeign(u); renderDrawer(); return; }
     if (["hp", "maxhp", "atk", "mov", "rng"].includes(k)) v = clamp(r2(num(v, u[k])), 0, k === "hp" || k === "maxhp" ? HP_MAX : STAT_MAX);
     else if (k === "name") { v = v.trim().slice(0, 60); if (!v) { render(); return; } }
     if (k === "maxhp" && !(v > 0)) { toast("Full HP must be more than 0"); render(); return; }
@@ -1559,7 +1565,6 @@ syncMenu();
 applyTheme();
 reseed();
 render();
-if (ROLE === "delegate") loadAlloc();
 loadMorale(); setInterval(() => { if (!document.hidden) loadMorale(); }, 15000);
 loadRules(); setInterval(() => { if (!document.hidden) loadRules(); }, 15000);
 const beat = () => { if (!document.hidden) SentinelAuth.api("POST", "/api/status", { topic: S.topic, page: UI.page }).catch(() => {}); };
