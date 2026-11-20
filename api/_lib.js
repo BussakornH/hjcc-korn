@@ -5,7 +5,9 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
-const ROLES = ["delegate", "chair", "admin"];
+/* Delegates no longer sign in: the chairs run every force themselves. An old delegate account stays in the table (the admin can remove it or
+   raise it to chair) but its sign-in is refused and any session it still holds stops working. */
+const ROLES = ["chair", "admin"];
 const SESSION_TTL = 12 * 3600;
 const SCRYPT = { N: 1 << 15, r: 8, p: 1 };
 /* LIMIT_IP is deliberately generous: a whole committee can sit behind one venue wifi address, and a few typos must not lock the room out.
@@ -204,7 +206,7 @@ async function session(req) {
   let s; try { s = JSON.parse(Buffer.from(body, "base64url").toString("utf8")); } catch (e) { return null; }
   if (!s || !(s.exp >= Date.now() / 1000)) return null;   /* a token with no expiry is refused too */
   const a = await db.account(s.u);
-  return a && a.role === s.role && s.f === fingerprint(a.hash) ? { u: s.u, role: a.role } : null;
+  return a && ROLES.includes(a.role) && a.role === s.role && s.f === fingerprint(a.hash) ? { u: s.u, role: a.role } : null;
 }
 /* ---------- http ---------- */
 function send(res, status, obj, headers) {

@@ -4,10 +4,9 @@
       err = document.getElementById("err"), uf = document.getElementById("uf"), go = document.getElementById("go"), show = document.getElementById("show"),
       rem = document.getElementById("rem"), RK = "sentinel-remember";
   try { var r = localStorage.getItem(RK); if (r) { u.value = r; rem.checked = true; p.focus(); } else if (localStorage.getItem("sentinel-role") === "admin") p.focus(); else u.focus(); } catch (e) { u.focus(); }
-  /* access level switcher: Delegate -> Chair -> Admin -> Delegate */
+  /* access level switcher: Chair -> Admin -> Chair (delegates no longer sign in; the chairs run every force) */
   var ROLES = [
-    { key: "delegate", name: "Delegate", title: "Delegates Access", note: "Access is limited to committee delegates." },
-    { key: "chair", name: "Chair", title: "Chair Access", note: "Chair accounts run the map, morale, sides and rules, and can view every side's forces." },
+    { key: "chair", name: "Chair", title: "Chair Access", note: "Chair accounts run every force, the map, morale, sides and rules." },
     { key: "admin", name: "Admin", title: "Administrator", help: "Contact the system owner to reset the administrator password.", note: "Administrator accounts can do everything, including rules, data and accounts." }
   ], ri = 0, roleBtn = document.getElementById("role"), roleLbl = document.getElementById("roleLbl"), noteEl = document.getElementById("note"), titleEl = document.getElementById("t"), helpEl = document.getElementById("help"), pips = roleBtn.querySelectorAll(".pips i");
   try { var sr = localStorage.getItem("sentinel-role"); for (var q = 0; q < ROLES.length; q++) if (ROLES[q].key === sr) ri = q; } catch (e) {}

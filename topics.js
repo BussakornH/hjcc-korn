@@ -1,8 +1,8 @@
 /* Topic picker: greeting, the two topic cards and their theatre maps. */
 (function () {
   var u = SentinelAuth.user() || "", role = SentinelAuth.role() || "";
-  document.getElementById("pt").textContent = "Welcome, " + (u ? u.charAt(0).toUpperCase() + u.slice(1) : "delegate");
-  document.getElementById("lvl").textContent = role === "admin" ? "Administrator access" : role === "chair" ? "Chair access" : "Delegate access";
+  document.getElementById("pt").textContent = "Welcome, " + (u ? u.charAt(0).toUpperCase() + u.slice(1) : "chair");
+  document.getElementById("lvl").textContent = role === "admin" ? "Administrator access" : "Chair access";
   var cards = document.querySelectorAll(".pick-card");
   function enter(card) {
     try { sessionStorage.setItem("sentinel-topic", card.getAttribute("data-t")); sessionStorage.setItem("sentinel-enter", "1"); } catch (e) {}

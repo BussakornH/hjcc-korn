@@ -22,7 +22,7 @@
     return cached;
   }
   window.SentinelAuth = {
-    roles: ["delegate", "chair", "admin"],
+    roles: ["chair", "admin"],
     user: function () { var s = me(); return s ? s.u : null; },
     role: function () { var s = me(); return s ? s.role : null; },
     require: function () { if (!me()) location.replace("./"); },

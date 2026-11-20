@@ -28,14 +28,16 @@ const TRVER = { t1: "0", t2: "0" }, TRB = { t1: [], t2: [] }, mpClone = v => JSO
 function mpTrAdopt(j) {
   ["t1", "t2"].forEach(t => { TR[t] = j[t] || []; TRVER[t] = (j.ver && j.ver[t]) || "0"; TRB[t] = mpClone(TR[t]); });
 }
-/* ---------- every side's forces, for the chairs ----------
-   A delegate's own units are copied to the server whenever they change; a chair's copy of them is rebuilt from there (read only, marked "remote"). */
+/* ---------- every side's forces, shared between the chairs ----------
+   Each chair's own units (both sides) are copied to the server whenever they change; the other chairs rebuild them from there, marked "remote" with the
+   owner's name. A chair's unit keeps its own id on every screen, so a troop on the map points at the same unit everywhere.
+   Units a former delegate account left on the server still arrive, under "r:<username>:<unit id>", until the admin resets the topic. */
 let mpFSent = {}, mpFT = 0;
 function mpForcesPush() {
-  if (typeof ROLE === "undefined" || ROLE !== "delegate") return; clearTimeout(mpFT);
+  if (typeof ROLE === "undefined" || ROLE !== "chair") return; clearTimeout(mpFT);
   mpFT = setTimeout(() => ["t1", "t2"].forEach(t => {
     const d = S.topics[t]; if (!d) return;
-    const units = d.units.filter(u => u.side === "me" && !u.mirror && !u.remote).slice(0, 300).map(u => ({ id: u.id, name: u.name, code: u.tcode || "", cls: u.tname || "", branch: u.branch || "", hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), fr: u.front === "reserve" ? "reserve" : (u.front === "lost" || lost(u)) ? "lost" : "front" })), j = JSON.stringify(units);
+    const units = d.units.filter(u => !u.mirror && !u.remote).slice(0, 300).map(u => ({ id: u.id, name: u.name, code: u.tcode || "", cls: u.tname || "", branch: u.branch || "", side: u.side, hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), fr: u.front === "reserve" ? "reserve" : (u.front === "lost" || lost(u)) ? "lost" : "front" })), j = JSON.stringify(units);
     if (mpFSent[t] === j) return;
     /* A brand-new device (new browser, private window, cleared site data) starts with no units. Pushing that empty list would wipe the copy
        the chairs see. Only send an empty list from a device that has itself sent units for this topic before. */
@@ -50,15 +52,16 @@ function mpForcesLoad() {
   return SentinelAuth.api("GET", "/api/forces").then(r => r.ok ? r.json() : null).then(j => {
     if (!j) return; mpFOk = true; let changed = false;
     ["t1", "t2"].forEach(t => {
-      const d = S.topics[t]; if (!d) return; const want = new Map(), fr = (d.fronts.find(f => !f.fixed) || d.fronts[0]).id;
-      (j[t] || []).forEach(g => g.units.forEach(x => want.set("r:" + g.user + ":" + x.id, { g, x })));
+      const d = S.topics[t]; if (!d) return; const want = new Map(), fr = (d.fronts.find(f => !f.fixed) || d.fronts[0]).id, me = String(SentinelAuth.user() || "").toLowerCase();
+      (j[t] || []).forEach(g => { if (g.user === me) return; g.units.forEach(x => { const id = g.side === null ? x.id : "r:" + g.user + ":" + x.id; if (!d.units.some(y => y.id === id && !y.remote && !y.mirror)) want.set(id, { g, x, side: x.side || g.side }); }); });   /* never your own units, and never over a unit you hold yourself */
       d.units = d.units.filter(u => { if (u.remote && !want.has(u.id)) { changed = true; return false; } return true; });
-      want.forEach(({ g, x }, id) => {
+      want.forEach(({ g, x, side }, id) => {
         const ty = d.types.find(y => y.code === x.code), front = x.fr === "reserve" ? "reserve" : x.fr === "lost" ? "lost" : fr;
         let u = d.units.find(y => y.id === id);
-        const nu = { side: g.side, name: x.name, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng, front, remote: g.user };
-        if (!u) { u = mkUnit(d, { side: g.side, t: ty, name: x.name, front, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng }); u.id = id; u.remote = g.user; u.fsv = { hp: x.hp, fr: x.fr }; d.units.push(u); changed = true; return; }
-        /* HP and front: the chair may override them (a battle applied, an HP edit), so the delegate's copy only wins when the delegate changed it since this device last looked
+        if (u && u.mirror) { delete u.mirror; u.remote = g.user; changed = true; }   /* a marker's stand-in, now that its owner's forces are in */
+        const nu = { side, name: x.name, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng, front, remote: g.user };
+        if (!u) { u = mkUnit(d, { side, t: ty, name: x.name, front, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng }); u.id = id; u.remote = g.user; u.fsv = { hp: x.hp, fr: x.fr }; d.units.push(u); changed = true; return; }
+        /* HP and front: this chair may override them (a battle applied, an HP edit), so the owner's copy only wins when the owner changed it since this device last looked
            (u.fsv is what it said then). Copying it back unconditionally put the old HP on the unit after every battle, and for a unit on the map mpTroopSync then sent that
            old HP to the server as if the chair had set it. A unit with a marker takes HP from the marker instead (mpTroopSync), never from here. */
         const placed = (TR[t] || []).some(m => m.uid === id), moved = !u.fsv || u.fsv.hp !== x.hp || u.fsv.fr !== x.fr;
@@ -69,21 +72,11 @@ function mpForcesLoad() {
     if (changed) { save(); if (!mpTDrag && !(typeof dragging === "function" && dragging())) render(); }
   }, () => {});
 }
-/* A chair's own copy holds only the delegates' units (marked remote) and any unit a marker on the map points to. Anything else is old data from before forces were kept per sign-in: it goes.
-   Runs once both the delegates' forces and the troops have come back, so a unit a marker needs is never taken for junk. */
+/* Runs once both the other chairs' forces and the troops have come back. A chair's own units are theirs to keep (they used to be thrown away here,
+   back when the forces belonged to the delegates). */
 function mpChairRepair() {
   if (ROLE !== "chair" || !mpFOk) return; let ch = false, mk = false;
-  ["t1", "t2"].forEach(t => {
-    const d = S.topics[t]; if (!d) return; if (d.alloc.delegation || d.alloc.portfolio) { d.alloc.delegation = ""; d.alloc.portfolio = ""; ch = true; }
-    const remote = d.units.filter(u => u.remote), mks = TR[t] || [];
-    d.units = d.units.filter(u => {
-      if (u.remote) return true;
-      const twin = remote.find(r => r.id.endsWith(":" + u.id));
-      if (twin) { mks.forEach(x => { if (x.uid === u.id) { x.uid = twin.id; mk = true; } }); ch = true; return false; }
-      if (mks.some(x => x.uid === u.id)) return true;
-      ch = true; return false;
-    });
-  });
+  ["t1", "t2"].forEach(t => { const d = S.topics[t]; if (d && (d.alloc.delegation || d.alloc.portfolio)) { d.alloc.delegation = ""; d.alloc.portfolio = ""; ch = true; } });
   ["t1", "t2"].forEach(t => { const d = S.topics[t]; if (!d) return; (TR[t] || []).forEach(x => { const u = d.units.find(y => y.id === x.uid && y.remote); if (u && u.side !== x.side) { x.side = u.side; x.aff = mpAffOf(u.side); mk = true; ch = true; } }); });   /* a neutral who joins a side takes that side's colour */
   if (ch) { save(); if (mk) mpTroopSave(); render(); }
 }
@@ -134,7 +127,7 @@ function mpTroopSync() {
       if (u.side !== ls) {
         /* A delegate's unit takes its side from the Sides page (it arrives with the delegates' forces). When the character changes side the marker follows the unit;
            copying the marker's old side back onto the unit kept the troop in its old colour for good, and its own delegate then saw it as an enemy. */
-        if (!del && u.remote && mpFOk) { x.side = u.side; x.aff = mpAffOf(u.side); push = true; }
+        if (!del && (u.remote ? mpFOk : !u.mirror)) { x.side = u.side; x.aff = mpAffOf(u.side); push = true; }   /* the unit's side wins: a chair moved their own unit to the other side */
         else { u.side = ls; save(); local = true; }
       }
       const ag = mpAg[x.id], now = {}; MPF.forEach(k => { now[k] = k === "name" ? u.name : num(u[k]); });

@@ -16,7 +16,6 @@ a Neon Postgres database. Nothing secret ships to the browser.
    ```
    npm run account -- admin <password> admin
    npm run account -- chair <password> chair
-   npm run account -- delegate <password> delegate
    ```
    Run the same command again to reset a password. Passwords must be at least 10 characters; very common ones, a single repeated
    character, or one containing the username are refused (here and on the admin's Accounts page). Existing accounts keep working until their
@@ -41,7 +40,10 @@ Every attempt is counted before its password is checked and handed back if it wa
 not get more of them checked. Sign-ins still being checked count too, so if more than ten tabs sign in to one account from one address in
 the same instant a few are refused for a moment; the sign-in page tries once more after 1.5 seconds before it reports a lock.
 The last administrator can be neither removed nor given a lower access level.
-Each delegate's forces, log and sub class stats are still stored in that browser's localStorage, not in the database (the chairs see a copy of the forces).
+Delegates no longer sign in: the access levels are Chair and Admin. A delegate account left in the database is listed on the admin's Accounts page as a former delegate;
+its sign-in is refused and any session it held stops working. Remove it, or give it chair access with a new password.
+The chairs run every force. Each chair's forces, log and sub class stats are stored in that chair's browser (localStorage) and copied to the server, so the
+other chairs see them: they can change another chair's unit's HP and front and use it in battles, but only its owner can rename it, change its stats or remove it.
 The combat rules (formula, switches, tables, directives) are shared: an edit by the Admin or a chair is saved in the database and reaches every screen within 15 seconds.
 The first time, a chair's device hands in the rules it already has; resetting a topic leaves its rules alone.
 A unit's attack, movement and range stop at 1000 and its HP at 100000, here and on the server.
@@ -49,7 +51,7 @@ When a session ends (12 hours, or a password reset) the next thing the page asks
 
 ## Editing at the same time
 Shared state (troops on the map, sides by day, city sides) is written so that two people editing at once do not erase each other.
-A delegate's HP change and a chair's save are applied on top of each other; two chairs saving the troop list from the same starting point
+Two chairs saving the troop list from the same starting point
 get a "stale" answer for the second one, and its page merges its own edits onto the newer list and saves again (`troops-merge.js`).
 Where the same field of the same troop was changed by both, the chair's value wins. Rules are saved as a whole per topic: if two people change them
 at the same moment the second is told the rules changed and gets the new ones to look at before trying again. Battle lines are still saved as a whole list,
