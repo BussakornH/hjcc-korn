@@ -1086,3 +1086,12 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
   .mp-R .mp-nocard { display: none; }
   .tb-s b { display: none; } .tb-s.tb-now b { display: inline; }
 }
+/* the "visible on the map" row of the war map's command bar */
+.mp-vis { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 16px; border-bottom: 1px solid var(--line-2, var(--line)); }
+.mp-vis-k { margin-right: 4px; color: var(--ink-3); font-size: var(--fs-xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.vis-t { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 3px 12px 3px 10px; border: 1px solid var(--line); border-left: 4px solid var(--me); border-radius: 9px; background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.vis-t.vis-foe { border-left-color: var(--foe); } .vis-t.vis-ne { border-left-color: #8a91a0; }
+.vis-t .ic { width: 16px; height: 16px; } .vis-t b { font-weight: 600; } .vis-t small { color: var(--ink-3); font-size: 11.5px; }
+.vis-t:hover { border-color: var(--ink-3); } .vis-t:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vis-t.off { background: var(--panel-3); color: var(--ink-3); border-style: dashed; } .vis-t.off b { text-decoration: line-through; }
+.mp-vis-n { margin-left: auto; color: var(--ink-3); font-size: var(--fs-xs); }

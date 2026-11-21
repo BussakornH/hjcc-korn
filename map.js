@@ -305,7 +305,7 @@ function pgMap() {
     if (MPT !== t) { MPT = t; MPV = mpFit(g); mpTS = null; mpPick.clear(); mpSel = null; mpVx = null; mpDraft = []; mpTool = "edit"; }
   const live = document.querySelector("#page .mapsvg"), keepBase = !!(live && live.isConnected && live.dataset.t === t && live.dataset.base === "1");   /* the base map (sea, land, borders, terrain) never changes: the live one is kept, so it is not rebuilt or parsed again */
   const v = MPV, svg = `<svg class="mapsvg" data-t="${t}" data-base="${keepBase ? "0" : "1"}" viewBox="${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}" data-z="${g.W / v.w > 1.8 ? 1 : 0}" data-tool="${chair ? mpTool : ""}" data-terr="${mpTerr ? 1 : 0}" role="img" aria-label="Battle map">${keepBase ? "" : mpBase(t)}<g id="mp-lines">${mpLinesSvg(t)}</g><g id="mp-range">${mpRangeSvg(t)}</g><g id="mp-points">${mpPointsSvg(t)}</g><g id="mp-cities">${mpCitiesSvg(t)}</g><g id="mp-troops">${mpTroopsSvg(t)}</g></svg>`;
-  const zoom = `<div class="mp-zoom"><button class="btn sm" data-a="mapZoom" data-z="1.3" aria-label="Zoom in">${ico("plus")}</button><button class="btn sm" data-a="mapZoom" data-z="0.77" aria-label="Zoom out">−</button><button class="btn sm" data-a="mapZoom" data-z="0">Fit</button><button class="btn sm${mpTerr ? " on" : ""}" data-a="mapTerr" aria-pressed="${mpTerr}">Terrain</button>${chair ? (() => { const n = mpTroops().filter(x => mpHid(t, x)).length; return `<button class="btn sm${mpHbOpen ? " on" : ""}" data-a="mapHb" aria-expanded="${mpHbOpen}">Show / hide${n ? ` <em class="mp-hn">${n} hidden</em>` : ""}</button>`; })() : ""}</div>${chair && mpHbOpen ? `<div class="mp-hb-pop">${mpHideBar(t)}</div>` : ""}`;
+  const zoom = `<div class="mp-zoom"><button class="btn sm" data-a="mapZoom" data-z="1.3" aria-label="Zoom in">${ico("plus")}</button><button class="btn sm" data-a="mapZoom" data-z="0.77" aria-label="Zoom out">−</button><button class="btn sm" data-a="mapZoom" data-z="0">Fit</button><button class="btn sm${mpTerr ? " on" : ""}" data-a="mapTerr" aria-pressed="${mpTerr}">Terrain</button></div>${chair && mpHbOpen ? `<div class="mp-hb-pop">${mpHideBar(t)}</div>` : ""}`;
   const pk = chair ? mpPickLive().size : 0, pickBar = pk ? `<div class="mp-pickbar" role="status"><b>${plural(pk, "unit")} selected</b><span>Click the map to put ${pk > 1 ? "them" : "it"} down</span><button class="btn sm" data-a="mapPickClear">Clear</button></div>` : "";
   const legend = `<div class="mp-key"><span><i class="k-line"></i>Battle line</span><span><i class="k-trench"></i>Trench</span><span><i class="k-riv"></i>River</span><span><i class="k-for"></i>Forest</span><span><i class="k-el"></i>Low to high ground</span><span><i class="k-pt weak"></i>Weak point (+2 damage)</span><span><i class="k-pt fort"></i>Fortified point (-5 damage)</span><span><i class="k-dot"></i>Key city</span><span><i class="k-dot me"></i>${esc(chair ? sideLbl("me") : t === "t2" ? "Allied" : "France")}</span><span><i class="k-dot foe"></i>${esc(chair ? sideLbl("foe") : t === "t2" ? "Central" : "England")}</span><span>Zoom in for more cities</span></div>`;
   setTimeout(() => mpLabels(document.querySelector(".mapsvg")), 0);
@@ -333,6 +333,12 @@ function mpViewBar(t) {
 const mpCtx = (main, ctl) => `<div class="mp-ctx"><div class="mp-ctx-main">${main}</div>${ctl ? `<div class="mp-ctx-ctl">${ctl}</div>` : ""}</div>`;
 const mpHint = (title, text) => `${title ? `<b>${title}</b>` : ""}<span>${text}</span>`;
 const mpLbl = t => `<span class="mp-lbl">${t}</span>`;
+/* which troops appear on the map (this screen only): one toggle per side, always in view, and the countries behind a button */
+function mpVisRow(t) {
+  const h = mpHide[t], all = mpTroops(), nm = sd => sideLbl(sd).replace(/ Powers$/, ""), cabsOff = CABS(t).filter(c => h.has("cab:" + c.id)).length;
+  const tog = sd => { const off = h.has("side:" + sd), n = all.filter(x => x.side === sd).length; return `<button class="vis-t vis-${sd}${off ? " off" : ""}" data-a="mapHideSide" data-s="${sd}" aria-pressed="${!off}" title="${off ? "Show" : "Hide"} every ${esc(sideLbl(sd))} troop on the map">${ico(off ? "eyeoff" : "eye")}<b>${esc(nm(sd))}</b><small>${off ? "hidden" : n + " on map"}</small></button>`; };
+  return `<div class="mp-vis" role="group" aria-label="Troops visible on the map"><span class="mp-vis-k">Visible on the map</span>${["me", "foe", "ne"].map(tog).join("")}${CABS(t).length ? `<button class="btn sm${mpHbOpen ? " on" : ""}" data-a="mapHb" aria-expanded="${mpHbOpen}">Countries${cabsOff ? ` <em class="mp-hn">${cabsOff} off</em>` : ""}</button>` : ""}<button class="btn sm plain" data-a="mapHideAll" data-v="show" ${h.size ? "" : "disabled"}>Show everything</button><span class="mp-vis-n">Your screen only</span></div>`;
+}
 function mpChairBar(t) {
   const L = LN[t], sel = L.find(l => l.id === mpSel);
   const tools = seg("mapTool", [["edit", "Reshape"], ["draw", "Draw a line"], ["trench", "Trenches"], ["city", "Cities"], ["pts", "Weak / fortified"]], mpTool, "t");
@@ -365,7 +371,7 @@ function mpChairBar(t) {
   const lines = L.filter(l => !isTrench(l)), trs = L.filter(isTrench).sort((a, b) => (a.side === b.side ? 0 : a.side === "me" ? -1 : 1) || TR_TIERS.indexOf(a.tier) - TR_TIERS.indexOf(b.tier));
   const chips = mpChips(lines, "mapLine", mpDrawing() ? null : mpSel), trChips = mpChips(trs, "mapLine", mpDrawing() ? null : mpSel, true);
   const lists = (lines.length ? `<span class="mp-bar-k">Lines</span>${chips}` : "") + (trs.length ? `<span class="mp-bar-k">Trenches</span>${trChips}` : "");
-  return `<section class="panel mp-card mp-bar">${mpTurnBar(t)}<div class="mp-bar-top">${tools}<div class="mp-chips mp-lists">${lists}</div><button class="btn sm plain" data-a="mapReset" title="Put the default battle lines back">Restore defaults</button></div>${ctx}</section>`;
+  return `<section class="panel mp-card mp-bar">${mpTurnBar(t)}${mpVisRow(t)}<div class="mp-bar-top">${tools}<div class="mp-chips mp-lists">${lists}</div><button class="btn sm plain" data-a="mapReset" title="Put the default battle lines back">Restore defaults</button></div>${ctx}</section>`;
 }
 
 const MAPA = {
