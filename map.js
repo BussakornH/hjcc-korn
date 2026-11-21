@@ -380,7 +380,6 @@ const MAPA = {
     if (mpTool === "trench") {   /* a trench is named after its side and kind; rename it afterwards if you like */
       const id = "l" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), { side, tier } = mpTrNew;
       LN[S.topic].push({ id, kind: "trench", side, tier, zone: "", name: trName(side, tier), pts: mpDraft.slice() }); mpDraft = []; mpVx = null;
-      const nx = TR_TIERS[TR_TIERS.indexOf(tier) + 1]; if (nx) mpTrNew = { side, tier: nx };   /* next: the trench behind it */
       toast(`${trName(side, tier)} dug`); render(); mpSave(); return;
     }
     askText("Name this line", "Name", mpName(), nm => {
