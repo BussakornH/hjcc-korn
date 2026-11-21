@@ -10,7 +10,7 @@ const CHARS = require("./_chars");
         answer is 409 { error: "stale", ver, troops: <the current list> }, so the caller can merge its own edits onto it and send again.
         200 { ok, ver, troops } carries the new ver and the list as stored.
    POST { topic, hp: [{ id, hp }] } -> change the HP of troops on your own side   (a delegate, or staff). Applied on top of whatever is stored, never lost to a concurrent save.
-   troop: { id, uid, name, code, aff, side, cab, lat, lon, hp, maxhp, atk, mov, rng, lost }   (cab: the cabinet / country the unit belongs to, "" if none)
+   troop: { id, uid, name, code, aff, side, cab, st, lat, lon, hp, maxhp, atk, mov, rng, lost }   (cab: the cabinet / country the unit belongs to, "" if none; st: stealth, hidden on the other side's turns)
    uid is the chair's unit id, "r:<username>:<unit id>" for a delegate's unit. Usernames may contain dots, so dots are kept. */
 const TOPIC = ["t1", "t2"], MAX = 200;
 const CODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "XBW", "HOB", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF", "MP", "ARM", "SAP", "BAT"];
@@ -25,7 +25,7 @@ const clean = (v) => {
     if (!id || seen.has(id) || !name || lat === null || lon === null || hp === null || maxhp === null || !CODES.includes(x.code) || !AFF.includes(x.aff)) return null;
     seen.add(id);
     out.push({ id, uid: String(x.uid || "").replace(/[^A-Za-z0-9_:.-]/g, "").slice(0, 64), name, code: x.code, aff: x.aff, side: x.side === "foe" || x.side === "ne" ? x.side : "me", cab: String(x.cab || "").replace(/[^a-z]/g, "").slice(0, 8),
-      lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000, hp: Math.min(hp, maxhp), maxhp, atk: n(x.atk, 0, 1000) || 0, mov: n(x.mov, 0, 1000) || 0, rng: n(x.rng, 0, 1000) || 0, lost: !!x.lost });
+      lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000, hp: Math.min(hp, maxhp), maxhp, atk: n(x.atk, 0, 1000) || 0, mov: n(x.mov, 0, 1000) || 0, rng: n(x.rng, 0, 1000) || 0, lost: !!x.lost, st: !!x.st });
   }
   return out;
 };

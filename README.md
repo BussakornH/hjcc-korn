@@ -68,6 +68,12 @@ Left: the forces of one side at a time (Allied / Central / Neutral switch): unit
 troops on the map. Right: the card of the selected troop (a neutral unit's card has Join Allied / Join Central). Spain, the USA and the Netherlands
 load as Neutral. The Combat Calculator's "War map" button opens the map with the side menu closed; the map's "Show menu" brings it back.
 
+## Turns and stealth
+The war map has a turn bar: a round is eight turns, Cabinet One, Two, Two, One, One, Two, Two, One. Cabinet One is a side (Allied unless a chair
+picks Central), Cabinet Two the other. Next turn / Back / Reset are shared through `api/lines.js` (`turn:<topic>`); a press carries the turn it was
+made on, so two chairs pressing at once cannot skip a turn. After turn 8 the round is over and the button starts the next one.
+A troop in stealth (`st`, the Stealth mode button on its card) is off the map on the other side's turns and shows faintly on its own side's turns.
+
 ## Trenches
 On the battle map the Trenches tool lets a chair dig trenches for either side: frontline, support and backline (any number of each; lines and
 trenches together stop at 40 per map). They are battle lines with `kind: "trench"`, a `side` and a `tier`, saved by `api/lines.js`.

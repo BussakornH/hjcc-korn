@@ -11,7 +11,13 @@ const DEFAULTS = require("./_lines");
    GET also returns points: { t1: [{ id, kind: "weak"|"fort", lat, lon, r (km), name }], t2: [...] }
    A line may be a trench: { kind: "trench", side: "me" | "foe", tier: "front" | "support" | "back" } (no zone). Troops arriving go to their side's
    backline trench, and a unit standing in its own side's trench takes less damage (the rules' trenchCut / trenchKm).
+   POST { topic, turn: op, from? }  -> the turn order of the war map (admin, chair). op: "next" | "back" | "reset" | "one:me" | "one:foe".
+        A round is eight turns: One, Two, Two, One, One, Two, Two, One, where Cabinet One is a side ("me" or "foe") and Cabinet Two the other.
+        step 0-7 is the turn being played, 8 means the round is over; "next" from 8 starts the next round. Answers { ok, turn }.
+   GET also returns turn: { t1: { one, round, step }, t2: ... }
    GET also returns citySides: { t1: { cityName: side }, t2: {...} } */
+const TURN0 = { one: "me", round: 1, step: 0 };
+const turnOf = (v) => (v && (v.one === "me" || v.one === "foe") && v.round >= 1 && v.step >= 0 && v.step <= 8 ? { one: v.one, round: v.round, step: v.step } : { ...TURN0 });
 const TOPIC = ["t1", "t2"], MAX_LINES = 40, MAX_PTS = 120, MAX_POINTS = 60;
 const clean = (v) => {
   if (!Array.isArray(v) || v.length > MAX_LINES) return null;
@@ -43,7 +49,8 @@ module.exports = L.wrap(async (req, res) => {
   const canEdit = me.role === "admin" || me.role === "chair";
   if (req.method === "GET") {
     const out = { canEdit };
-    out.citySides = {}; out.points = {};
+    out.citySides = {}; out.points = {}; out.turn = {};
+    for (const t of TOPIC) out.turn[t] = turnOf(await L.db.getKv("turn:" + t));
     for (const t of TOPIC) { out.points[t] = (await L.db.getKv("points:" + t)) || []; out[t] = (await L.db.getKv("lines:" + t)) || DEFAULTS[t].map((l) => ({ id: l.id, name: l.name, pts: l.pts })); out.citySides[t] = (await L.db.getKv("citysides:" + t)) || {}; }
     return L.send(res, 200, out);
   }
@@ -61,6 +68,21 @@ module.exports = L.wrap(async (req, res) => {
       return m;
     });
     return L.send(res, 200, { ok: true });
+  }
+  if (b.turn !== undefined) {
+    const op = String(b.turn); if (!["next", "back", "reset", "one:me", "one:foe"].includes(op)) return L.send(res, 400, { error: "turn" });
+    let out = null;
+    const from = b.from == null ? null : String(b.from);   /* "round:step" the chair pressed on: if the turn has moved since (another chair), nothing changes */
+    await L.updateKv("turn:" + t, (cur) => {
+      const v = turnOf(cur); out = v;
+      if (from !== null && op !== "reset" && !op.startsWith("one:") && from !== v.round + ":" + v.step) return undefined;
+      if (op === "next") { if (v.step < 8) v.step++; else { v.round = Math.min(999, v.round + 1); v.step = 0; } }
+      else if (op === "back") { if (v.step > 0) v.step--; else if (v.round > 1) { v.round--; v.step = 8; } }
+      else if (op === "reset") { v.round = 1; v.step = 0; }
+      else v.one = op.slice(4);
+      out = v; return v;
+    });
+    return L.send(res, 200, { ok: true, turn: out || turnOf(await L.db.getKv("turn:" + t)) });
   }
   if (b.points !== undefined) {
     const pts = cleanPoints(b.points); if (!pts) return L.send(res, 400, { error: "points" });

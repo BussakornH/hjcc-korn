@@ -36,7 +36,32 @@ function mpLoadData(quiet) {
 }
 /* weak / fortified points: a circle on the map. Units whose marker stands inside one take +2 (weak) or -5 (fortified) damage, see zoneNet() in app.js */
 const PT_KM = 111.32, PT_ICON = { weak: "Weak point", fort: "Fortified point" };
-function mpPtAdopt(j) { if (j && j.points) PTS = { t1: j.points.t1 || [], t2: j.points.t2 || [] }; mpPtAt = Date.now(); }
+function mpPtAdopt(j) { if (j && j.points) PTS = { t1: j.points.t1 || [], t2: j.points.t2 || [] }; if (j && j.turn) TURN = Object.assign({}, TURN, j.turn); mpPtAt = Date.now(); }
+/* ---------- the turn order (shared through api/lines.js) ----------
+   A round is eight turns: One, Two, Two, One, One, Two, Two, One. Cabinet One is a side (Allied by default), Cabinet Two the other.
+   step 0-7 is the turn being played; 8 means the round is over and the next press starts the next round. */
+let TURN = { t1: { one: "me", round: 1, step: 0 }, t2: { one: "me", round: 1, step: 0 } }, mpTurnBusy = false;
+const TURN_ORDER = [1, 2, 2, 1, 1, 2, 2, 1];
+const turnOf = t => TURN[t] || { one: "me", round: 1, step: 0 };
+const turnSideAt = (t, i) => { const v = turnOf(t), two = v.one === "me" ? "foe" : "me"; return TURN_ORDER[i] === 1 ? v.one : two; };
+const turnNow = t => { const v = turnOf(t); return v.step < 8 ? turnSideAt(t, v.step) : null; };   /* the side whose turn it is, or null between rounds */
+function mpTurnBar(t) {
+  const v = turnOf(t), cur = v.step < 8 ? v.step : -1, nm = sd => sideLbl(sd).replace(/ Powers$/, "");
+  const pills = TURN_ORDER.map((n, i) => { const sd = turnSideAt(t, i), st = i < v.step ? "done" : i === cur ? "now" : "next"; return `<li class="tb-p tb-${st} tb-${sd}" aria-current="${st === "now" ? "step" : "false"}"><span class="tb-n">${i + 1}</span><b>${esc(nm(sd))}</b><small>Cabinet ${n === 1 ? "One" : "Two"}</small></li>`; }).join("");
+  const now = turnNow(t), nx = v.step < 7 ? turnSideAt(t, v.step + 1) : null;
+  const status = now ? `<b>Turn ${v.step + 1} of 8: ${esc(sideLbl(now))}</b><span>${nx ? `Next: ${esc(sideLbl(nx))}` : "Last turn of the round"}</span>` : `<b>Round ${v.round} complete</b><span>All eight turns played</span>`;
+  const one = `<label class="tb-one">Cabinet One <select class="sel" data-c="mapTurnOne" aria-label="Cabinet One">${["me", "foe"].map(sd => `<option value="${sd}" ${v.one === sd ? "selected" : ""}>${esc(nm(sd))}</option>`).join("")}</select></label>`;
+  return `<section class="panel mp-card mp-turn" aria-label="Turn order"><div class="tb-top"><div class="tb-round"><span class="eyebrow">Round ${v.round}</span>${status}</div><div class="tb-act">${one}<button class="btn sm" data-a="mapTurn" data-op="back" ${v.step === 0 && v.round === 1 ? "disabled" : ""}>Back</button><button class="btn sm plain" data-a="mapTurnReset" title="Back to round 1, turn 1">Reset</button><button class="btn primary" data-a="mapTurn" data-op="next">${now ? (v.step === 7 ? "Finish round" : "Next turn") : `Start round ${v.round + 1}`}</button></div></div><ol class="tb-pills">${pills}</ol></section>`;
+}
+function mpTurnSend(op) {
+  if (mpTurnBusy) return; const t = S.topic, v = turnOf(t); mpTurnBusy = true;
+  SentinelAuth.api("POST", "/api/lines", { topic: t, turn: op, from: v.round + ":" + v.step }).then(r => r.ok ? r.json() : Promise.reject()).then(j => {
+    const moved = JSON.stringify(j.turn) !== JSON.stringify(v); TURN = Object.assign({}, TURN, { [t]: j.turn });
+    const now = turnNow(t); if (now) { UI.mpSide = now; saveUI(); }   /* the forces panel follows the side whose turn it is */
+    if (!moved && (op === "next" || op === "back")) toast("Another chair moved the turn just now");
+    mpTS = null; mpRG = null; render();
+  }).catch(() => toast("Could not change the turn, try again")).then(() => { mpTurnBusy = false; });
+}
 /* the combat calculator needs the points even when the map was never opened */
 function mpPointsLoad() { mpPtAt = Date.now(); return SentinelAuth.api("GET", "/api/lines").then(r => r.ok ? r.json() : null).then(j => { if (j && !mpPtDirty) { const o = JSON.stringify(PTS); mpPtAdopt(j); if (o !== JSON.stringify(PTS) && UI.page !== "map") render(); } }, () => {}); }
 let mpPtDirty = 0;
@@ -285,7 +310,7 @@ function pgMap() {
   const legend = `<div class="mp-key"><span><i class="k-line"></i>Battle line</span><span><i class="k-trench"></i>Trench</span><span><i class="k-riv"></i>River</span><span><i class="k-for"></i>Forest</span><span><i class="k-el"></i>Low to high ground</span><span><i class="k-pt weak"></i>Weak point (+2 damage)</span><span><i class="k-pt fort"></i>Fortified point (-5 damage)</span><span><i class="k-dot"></i>Key city</span><span><i class="k-dot me"></i>${esc(chair ? sideLbl("me") : t === "t2" ? "Allied" : "France")}</span><span><i class="k-dot foe"></i>${esc(chair ? sideLbl("foe") : t === "t2" ? "Central" : "England")}</span><span>Zoom in for more cities</span></div>`;
   setTimeout(() => mpLabels(document.querySelector(".mapsvg")), 0);
   const col = c => `<aside class="mp-tl mp-${c}" aria-label="${c === "L" ? "Forces" : "Selected troop"}"><div class="mp-tl-in">${c === "L" ? mpForcesCol(t) : mpCardCol()}</div></aside>`;
-  return head + `<div class="mp-wrap">${chair ? mpChairBar(t) : mpViewBar(t)}<div class="mp-main">${col("L")}<div class="mp-board">${chair ? mpHideBar(t) : ""}<div class="mp-stage"><div class="mp-view">${zoom}${pickBar}${svg}</div></div>${legend}</div>${col("R")}</div><div class="mp-foot">${mpTerrCard()}</div></div>`;
+  return head + `<div class="mp-wrap">${chair ? mpTurnBar(t) : ""}${chair ? mpChairBar(t) : mpViewBar(t)}<div class="mp-main">${col("L")}<div class="mp-board">${chair ? mpHideBar(t) : ""}<div class="mp-stage"><div class="mp-view">${zoom}${pickBar}${svg}</div></div>${legend}</div>${col("R")}</div><div class="mp-foot">${mpTerrCard()}</div></div>`;
 }
 
 /* show / hide troops on the map, per side and per cabinet: this screen only, nothing is saved */
@@ -345,6 +370,8 @@ function mpChairBar(t) {
 
 const MAPA = {
   mapFull: () => { const off = document.body.classList.toggle("side-off"); document.body.classList.remove("nav-open"); try { localStorage.setItem("sentinel-side2", off ? "off" : "on"); } catch (e) {} if (typeof syncMenu === "function") syncMenu(); render(); setTimeout(() => mpLabels(document.querySelector(".mapsvg")), 260); },
+  mapTurn: el => mpTurnSend(el.dataset.op),
+  mapTurnReset: el => arm(el, () => mpTurnSend("reset")),
   mapTool: el => { mpTool = el.dataset.t; mpPtNew = null; mpPt = null; mpDraft = []; mpVx = null; mpCity = null; mpPick.clear(); render(); },
   mapZoom: el => {
     const z = Number(el.dataset.z), g = mpGeo(S.topic); if (!z) { MPV = mpFit(g); render(); return; }

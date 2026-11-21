@@ -1702,6 +1702,7 @@ const C = {
   morale: el => el.dataset.cab ? setCabMorale(el.dataset.cab, el.value) : setMorale(el.dataset.s, el.value),
   frontName: el => { const f = frontById(el.dataset.f), v = el.value.trim().slice(0, 40); if (!f || !v || v === f.name) { render(); return; } act(`Front renamed: ${f.name} → ${v}`, d => { d.fronts.find(x => x.id === f.id).name = v; }, "edit"); },
   cabF: el => { UI.cabF = el.value; saveUI(); render(); },
+  mapTurnOne: el => { if (el.value !== turnOf(S.topic).one) mpTurnSend("one:" + el.value); },
   adCab: () => { C.adType(); const c = cabById($("adCab").value); if (c) { const r = document.querySelector(`input[name="adSide"][value="${c.side}"]`); if (r) r.checked = true; } },
   adType: () => { const t = typeFor(D(), D().types.find(x => x.id === $("adType").value), $("adCab") ? $("adCab").value : ""); if (t) { $("adAtk").value = fx(t.atk); $("adHp").value = fx(t.hp); $("adMov").value = fx(t.mov); $("adRng").value = fx(t.rng); } if ($("adName").dataset.t !== "1") $("adName").value = t ? t.name : "Unit"; addHint(); }
 };

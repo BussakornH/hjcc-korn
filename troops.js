@@ -13,7 +13,8 @@ const mpTroops = () => TR[S.topic] || [];
    cabinets ("_" stands for troops that belong to no cabinet). Hidden troops leave the map; they stay in the lists beside it, marked hidden. */
 const mpHide = { t1: new Set(), t2: new Set() };
 const mpCabKey = x => (x.cab && CABS().some(c => c.id === x.cab)) ? x.cab : "_";
-const mpHid = (t, x) => { const h = mpHide[t]; return !!h && h.size > 0 && (h.has("side:" + x.side) || (CABS(t).length > 0 && h.has("cab:" + mpCabKey(x)))); };
+const mpHid = (t, x) => { if (x.st && typeof turnNow === "function" && turnNow(t) !== x.side) return true;   /* stealth: off the map on the other side's turns */
+  const h = mpHide[t]; return !!h && h.size > 0 && (h.has("side:" + x.side) || (CABS(t).length > 0 && h.has("cab:" + mpCabKey(x)))); };
 /* units ticked in the order of battle, to be put on the map together with one click (or one drag) */
 const mpPick = new Set();
 const mpPickLive = () => { const d = D(), placed = new Set(mpTroops().map(x => x.uid)); [...mpPick].forEach(id => { const u = d.units.find(y => y.id === id); if (!u || lost(u) || placed.has(id)) mpPick.delete(id); }); return mpPick; };
@@ -187,7 +188,7 @@ function mpTroopsSvg(t) {
     if (mpHid(t, x)) return "";
     const p = mpXY(g, x.lat, x.lon); if (p[0] < -20 || p[0] > g.W + 20 || p[1] < -20 || p[1] > g.H + 20) return "";
     const pc = x.maxhp > 0 ? Math.max(0, Math.min(1, x.hp / x.maxhp)) : 0, on = x.id === mpTS;
-    return `<g class="trp${on ? " on" : ""}${x.lost ? " dead" : ""}" data-a="mapTroop" data-id="${esc(x.id)}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><g class="trp-i">${on ? '<circle class="trp-r" r="34"/>' : ""}${x.id === mpPing ? '<circle class="trp-ping" r="34"/><circle class="trp-ping b" r="34"/>' : ""}<circle class="trp-hit" r="30"/><image href="symbols/${x.aff}/${x.code}.png" x="-30" y="-30" width="60" height="60"/><rect class="trp-hb" x="-19" y="20" width="38" height="4.5" rx="2.2"/><rect x="-19" y="20" width="${(38 * pc).toFixed(1)}" height="4.5" rx="2.2" style="fill:${mpHpCol(pc * 100)}"/><text class="trp-n" y="38">${esc(x.name)}</text>${cabTag(x)}${mpTrenchOf(t, x) ? '<path class="trp-tr" d="M-19 28.5l3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3"/>' : ""}</g></g>`;
+    return `<g class="trp${on ? " on" : ""}${x.lost ? " dead" : ""}${x.st ? " stealth" : ""}" data-a="mapTroop" data-id="${esc(x.id)}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><g class="trp-i">${on ? '<circle class="trp-r" r="34"/>' : ""}${x.id === mpPing ? '<circle class="trp-ping" r="34"/><circle class="trp-ping b" r="34"/>' : ""}<circle class="trp-hit" r="30"/><image href="symbols/${x.aff}/${x.code}.png" x="-30" y="-30" width="60" height="60"/><rect class="trp-hb" x="-19" y="20" width="38" height="4.5" rx="2.2"/><rect x="-19" y="20" width="${(38 * pc).toFixed(1)}" height="4.5" rx="2.2" style="fill:${mpHpCol(pc * 100)}"/><text class="trp-n" y="38">${esc(x.name)}</text>${cabTag(x)}${mpTrenchOf(t, x) ? '<path class="trp-tr" d="M-19 28.5l3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3"/>' : ""}</g></g>`;
   }).join("");
 }
 /* the cabinet's short code in its colour, top left of the marker */
@@ -280,7 +281,7 @@ function mpTroopCard() {
     <div class="trc-st"><span>ATK <b>${fx(x.atk)}</b></span><span>MOV <b>${fx(x.mov)}</b></span><span>RNG <b>${fx(x.rng)}</b></span><span class="trc-pos">AT <b>${mpLatLon(x)}</b></span></div>
     <div class="mp-act trc-go"><button class="btn sm" data-a="mapTrPin" title="Move the map to this unit and mark where it stands">${ico("pin")} Pinpoint location</button>${local && ROLE !== "admin" ? `<button class="btn sm primary" data-a="mapTrCalc" title="Put this unit into the combat calculator and open it">${ico("swords")} Open in calculator</button>` : ""}</div>
     <p class="muted" style="margin:8px 0 0">${x.mov > 0 ? `Reach this turn: up to ${km} km on open ground${dom === "air" ? "" : dom === "sea" ? ", on water only" : ". Mountains, forest, marsh and river crossings shorten it"}. The solid line is the full move, the dashed line half of it.` : "This unit does not move."}</p>
-    ${chair && local && ROLE !== "admin" ? `<div class="mp-join"><span>${x.side === "ne" ? "Neutral. Join a side:" : "Side:"}</span>${MPSIDES.filter(sd => sd !== x.side).map(sd => `<button class="btn sm" data-a="mapTrJoin" data-s="${sd}">${sd === "ne" ? "Make neutral" : "Join " + esc(sideLbl(sd).replace(/ Powers$/, ""))}</button>`).join("")}</div>` : ""}
+    ${chair && ROLE !== "admin" ? `<div class="mp-join"><button class="btn sm${x.st ? " on" : ""}" data-a="mapTrStealth" aria-pressed="${!!x.st}" title="${x.st ? "Show this troop on every turn again" : "Hide this troop from the map on the other side's turns"}">${ico(x.st ? "eye" : "eyeoff")} ${x.st ? "Reveal (leave stealth)" : "Stealth mode"}</button>${x.st ? `<span>Hidden on the ${esc(sideLbl(x.side === "me" ? "foe" : "me"))} turns.</span>` : ""}</div>` : ""}
     ${chair ? `<div class="mp-act" style="flex-wrap:wrap;margin-top:12px">${local ? `<button class="btn sm" data-a="mapTrHp" data-d="-1">−1 HP</button><button class="btn sm" data-a="mapTrHp" data-d="1">+1 HP</button><button class="btn sm" data-a="mapTrTray" title="Keep it for the next engagement without leaving the map">${ico("plus")} Add to battle tray</button>` : ""}<button class="btn sm danger" data-a="mapTrDel">Take off the map</button></div>
 ${local ? "" : '<p class="muted" style="margin-top:8px">This troop is not in your forces on this device, so its HP cannot be changed here.</p>'}` : ""}</section>`;
 }
@@ -365,8 +366,7 @@ Object.assign(MAPA, {
     setHp(d, u, nv); addLog(d, `${u.name}: HP ${fx(old)} → ${fx(nv)}${lost(u) ? " (destroyed)" : ""}`, "hp"); snap(d); save(); render();
   },
   mapSideTab: el => { UI.mpSide = el.dataset.s; saveUI(); render(); },
-  mapTrJoin: el => { const x = mpTrFind(mpTS), u = x && D().units.find(y => y.id === x.uid), sd = el.dataset.s; if (!u || !MPSIDES.includes(sd)) return; if (u.remote) { toast("That unit belongs to " + u.remote); return; }
-    act(`${u.name} ${sd === "ne" ? "is now neutral" : "joins the " + sideLbl(sd)}`, d => { const y = d.units.find(z => z.id === u.id); if (y) { y.side = sd; UI.sel.att = UI.sel.att.filter(z => z !== u.id); UI.sel.def = UI.sel.def.filter(z => z !== u.id); } }, "edit"); },
+  mapTrStealth: () => { const x = mpTrFind(mpTS); if (!x) return; x.st = !x.st; toast(x.st ? `${x.name} is in stealth: hidden on the other side's turns` : `${x.name} is visible again`); render(); mpTroopSave(); },
   mapTrTray: () => { const x = mpTrFind(mpTS); if (x && x.uid) A.tray({ dataset: { id: x.uid } }); },
   mapTrPin: () => { const x = mpTrFind(mpTS); if (x) mpPinpoint(x); },
   mapTrCalc: () => { const x = mpTrFind(mpTS), u = x && x.uid && D().units.find(y => y.id === x.uid); if (u) toCalc(u.id); }   /* one click: the unit goes in the calculator and the page switches */

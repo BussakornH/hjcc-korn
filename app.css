@@ -1030,3 +1030,21 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .ct-ed td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .tbl input.n.ct-ch { border-color: var(--accent); background: var(--accent-soft); font-weight: 700; }
 .mo-grid > .panel { margin: 0; }
+
+/* ---------- turn order bar (war map) ---------- */
+.mp-turn { padding: 12px 16px; }
+.tb-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.tb-round { display: flex; flex-direction: column; gap: 1px; min-width: 0; } .tb-round b { font-size: var(--fs-md, 15px); } .tb-round > span:last-child { color: var(--ink-3); font-size: var(--fs-sm); }
+.tb-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tb-one { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: var(--fs-sm); }
+.tb-pills { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.tb-p { position: relative; display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 7px 8px 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.tb-p::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: var(--me); } .tb-p.tb-foe::before { background: var(--foe); }
+.tb-p b { font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .tb-p small { color: var(--ink-3); font-size: 11px; }
+.tb-n { font: 700 11px/1 "IBM Plex Mono", ui-monospace, monospace; color: var(--ink-3); }
+.tb-done { opacity: .5; } .tb-done .tb-n::after { content: " ✓"; }
+.tb-now { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); } .tb-now .tb-n { color: var(--accent); }
+@media (max-width: 700px) { .tb-pills { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* stealth troops: faint and dashed on their own side's turn, off the map otherwise */
+.trp.stealth .trp-i { opacity: .45; } .trp.stealth .trp-hit { stroke: #fff; stroke-dasharray: 4 4; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.mp-join .btn.on { background: var(--accent-soft); color: var(--accent); }
