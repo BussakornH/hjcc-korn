@@ -9,6 +9,8 @@ const MPSEA = ["GAL", "COG", "DES", "CRU", "DRD", "SUB"], MPAIR = ["FTR", "REC",
 const mpDomain = c => MPAIR.includes(c) ? "air" : MPSEA.includes(c) ? "sea" : "land";
 const mpHpCol = p => p > 66 ? "#34c759" : p > 33 ? "#ff7a45" : "#ff453a";
 const mpTroops = () => TR[S.topic] || [];
+/* A chair can hide one side's troops on the map (this screen only): null shows both, "me" or "foe" hides that side. */
+const mpHide = { t1: null, t2: null }, mpHid = (t, x) => !!mpHide[t] && x.side === mpHide[t];
 const mpTrFind = id => mpTroops().find(x => x.id === id);
 
 /* A troop and the chair's unit of the same id are one thing: HP and stats move both ways.
@@ -174,6 +176,7 @@ async function mpTroopFlush() {
 function mpTroopsSvg(t) {
   const g = mpGeo(t);
   return (TR[t] || []).map(x => {
+    if (mpHid(t, x)) return "";
     const p = mpXY(g, x.lat, x.lon); if (p[0] < -20 || p[0] > g.W + 20 || p[1] < -20 || p[1] > g.H + 20) return "";
     const pc = x.maxhp > 0 ? Math.max(0, Math.min(1, x.hp / x.maxhp)) : 0, on = x.id === mpTS;
     return `<g class="trp${on ? " on" : ""}${x.lost ? " dead" : ""}" data-a="mapTroop" data-id="${esc(x.id)}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><g class="trp-i">${on ? '<circle class="trp-r" r="34"/>' : ""}${x.id === mpPing ? '<circle class="trp-ping" r="34"/><circle class="trp-ping b" r="34"/>' : ""}<circle class="trp-hit" r="30"/><image href="symbols/${x.aff}/${x.code}.png" x="-30" y="-30" width="60" height="60"/><rect class="trp-hb" x="-19" y="20" width="38" height="4.5" rx="2.2"/><rect x="-19" y="20" width="${(38 * pc).toFixed(1)}" height="4.5" rx="2.2" style="fill:${mpHpCol(pc * 100)}"/><text class="trp-n" y="38">${esc(x.name)}</text></g></g>`;
@@ -254,7 +257,7 @@ function mpRangeFor(t, x) {
   let far = 0; dist.forEach(q => { if (q !== Infinity && q > far) far = q; });
   return (mpRG = { key, dist, N, cost, pen, full: mpIso(v, N, budget, pos), half: mpIso(v, N, budget / 2, pos), budget, dom });
 }
-const mpRangeSvg = t => { const x = mpTrFind(mpTS); if (!x) return ""; const r = mpRangeFor(t, x); return r ? `<path class="rg-f" d="${r.full}" fill-rule="evenodd"/><path class="rg-h" d="${r.half}" fill-rule="evenodd"/>` : ""; };
+const mpRangeSvg = t => { const x = mpTrFind(mpTS); if (!x || mpHid(t, x)) return ""; const r = mpRangeFor(t, x); return r ? `<path class="rg-f" d="${r.full}" fill-rule="evenodd"/><path class="rg-h" d="${r.half}" fill-rule="evenodd"/>` : ""; };
 
 /* ---------- the side panel ---------- */
 const mpLatLon = x => Math.abs(x.lat).toFixed(2) + "°" + (x.lat < 0 ? "S" : "N") + " " + Math.abs(x.lon).toFixed(2) + "°" + (x.lon < 0 ? "W" : "E");
