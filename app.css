@@ -968,3 +968,15 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .bk-t td, .bk-t th { vertical-align: middle; } .bk-t .bk-n { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; } .bk-t .bk-n .muted { font-size: 11px; margin-left: 4px; }
 .bk-t input[type=checkbox] { width: 18px; height: 18px; }
 .mp-tl .mp-card { padding: 14px 12px; }
+
+/* ---------- trenches ---------- */
+.tr-b { fill: none; stroke: #5b4630; stroke-width: 11px; stroke-linecap: round; stroke-linejoin: round; opacity: .85; pointer-events: none; vector-effect: non-scaling-stroke; }
+.ln.tr .ln-l { stroke-width: 4px; }
+.ln.tr-me .ln-l { stroke: #6fb6ff; } .ln.tr-foe .ln-l { stroke: #ff7a6e; }
+.ln.tr-front .ln-l { stroke-dasharray: none; } .ln.tr-support .ln-l { stroke-dasharray: 10 6; } .ln.tr-back .ln-l { stroke-dasharray: 2 7; }
+.ln.tr-front .tr-b { stroke-width: 13px; } .ln.tr-back .tr-b { stroke-width: 9px; }
+.ln.tr.on .ln-l { stroke: #fff; } .ln.tr.on .tr-b { stroke: #8a6a45; }
+.ln.draft.tr .ln-l { stroke-dasharray: 8 6; }
+.mp-chip.tr-me .mp-sw { background: #2997ff; } .mp-chip.tr-foe .mp-sw { background: #ff453a; }
+.trp-tr { fill: none; stroke: #e2c08d; stroke-width: 2px; stroke-linejoin: round; paint-order: stroke; }
+.trc-tr { margin: 8px 0 0; padding: 6px 10px; border-radius: 8px; background: var(--panel-3); font-size: var(--fs-sm); }

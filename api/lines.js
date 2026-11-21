@@ -9,8 +9,10 @@ const DEFAULTS = require("./_lines");
    POST { topic, citySide: { name, side } } -> give a city to a side: "me" | "foe" | "n", or "default" to clear   (admin, chair)
    POST { topic, points }           -> replace the topic's weak / fortified points (admin, chair)
    GET also returns points: { t1: [{ id, kind: "weak"|"fort", lat, lon, r (km), name }], t2: [...] }
+   A line may be a trench: { kind: "trench", side: "me" | "foe", tier: "front" | "support" | "back" } (no zone). Troops arriving go to their side's
+   backline trench, and a unit standing in its own side's trench takes less damage (the rules' trenchCut / trenchKm).
    GET also returns citySides: { t1: { cityName: side }, t2: {...} } */
-const TOPIC = ["t1", "t2"], MAX_LINES = 12, MAX_PTS = 120, MAX_POINTS = 60;
+const TOPIC = ["t1", "t2"], MAX_LINES = 40, MAX_PTS = 120, MAX_POINTS = 60;
 const clean = (v) => {
   if (!Array.isArray(v) || v.length > MAX_LINES) return null;
   const seen = new Set(), out = [];
@@ -19,7 +21,9 @@ const clean = (v) => {
     if (!id || seen.has(id) || !name || !Array.isArray(l.pts) || l.pts.length < 2 || l.pts.length > MAX_PTS) return null;
     const pts = l.pts.map((p) => (Array.isArray(p) && p[0] != null && p[1] != null && p[0] !== "" && p[1] !== "" ? [Number(p[0]), Number(p[1])] : [NaN, NaN]));   /* Number(null) is 0: a missing coordinate must not become 0,0 */
     if (pts.some((p) => !(Math.abs(p[0]) <= 90 && Math.abs(p[1]) <= 180))) return null;
-    seen.add(id); out.push({ id, name, zone: l.zone === "w" || l.zone === "e" ? l.zone : "", pts: pts.map((p) => [Math.round(p[0] * 1000) / 1000, Math.round(p[1] * 1000) / 1000]) });
+    seen.add(id);
+    const tr = l.kind === "trench" ? { kind: "trench", side: l.side === "foe" ? "foe" : "me", tier: ["front", "support", "back"].includes(l.tier) ? l.tier : "back" } : {};
+    out.push({ id, name, zone: !tr.kind && (l.zone === "w" || l.zone === "e") ? l.zone : "", ...tr, pts: pts.map((p) => [Math.round(p[0] * 1000) / 1000, Math.round(p[1] * 1000) / 1000]) });
   }
   return out;
 };

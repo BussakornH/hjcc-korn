@@ -167,6 +167,33 @@ function mpCitiesSvg(t) {
   return o;
 }
 
+/* ---------- trenches ----------
+   A trench is a battle line with kind "trench", a side ("me" / "foe") and a tier: frontline, support or backline. Each side digs its own.
+   Land troops put on the map go to their side's backline trench first (troops.js), and a unit standing within trenchKm of a trench of its
+   own side counts as in it: it takes trenchCut % less damage when attacked (the combat rules, app.js). */
+const TR_TIER = { front: "Frontline", support: "Support", back: "Backline" }, TR_TIERS = ["front", "support", "back"];
+const isTrench = l => !!l && l.kind === "trench";
+let mpTrNew = { side: "me", tier: "front" };
+const mpDrawing = () => mpTool === "draw" || mpTool === "trench";
+const trName = (side, tier) => `${sideLbl(side).replace(/ Powers$/, "")} ${TR_TIER[tier].toLowerCase()} trench`;
+/* nearest point of a line to (x, y) in map units: distance, the point, and how far along the line it is */
+function mpNearOn(q, x, y) {
+  let best = { d: Infinity, p: q[0], s: 0 }, run = 0;
+  for (let i = 0; i < q.length - 1; i++) {
+    const A = q[i], B = q[i + 1], vx = B[0] - A[0], vy = B[1] - A[1], L2 = vx * vx + vy * vy || 1, u = Math.max(0, Math.min(1, ((x - A[0]) * vx + (y - A[1]) * vy) / L2)), p = [A[0] + vx * u, A[1] + vy * u], d = Math.hypot(x - p[0], y - p[1]), len = Math.sqrt(L2);
+    if (d < best.d) best = { d, p, s: run + len * u }; run += len;
+  }
+  return best;
+}
+/* the trench of the troop's own side it stands in (within the rules' trenchKm), or null. Ships and aircraft are never in a trench. */
+function mpTrenchOf(t, x) {
+  if (!x || mpDomain(x.code) !== "land" || typeof LN === "undefined" || !LN || !LN[t]) return null;
+  const g = mpGeo(t), kmU = 111.2 / g.sc, p = mpXY(g, x.lat, x.lon), R = (S.topics[t] && S.topics[t].rules) || {}, km = num(R.trenchKm, 30);
+  let best = null, bd = Infinity;
+  LN[t].forEach(l => { if (!isTrench(l) || l.side !== x.side) return; const n = mpNearOn(l.pts.map(a => mpXY(g, a[0], a[1])), p[0], p[1]); if (n.d < bd) { bd = n.d; best = l; } });
+  return best && bd * kmU <= km ? best : null;
+}
+
 /* the battle lines, drawn on top; redrawn alone while you drag a point */
 /* a line that comes back to where it began is an area (a landing zone): its inside takes the colour */
 const mpClosed = (g, l) => { if (l.pts.length < 4) return false; const a = mpXY(g, l.pts[0][0], l.pts[0][1]), b = mpXY(g, l.pts[l.pts.length - 1][0], l.pts[l.pts.length - 1][1]); return Math.hypot(a[0] - b[0], a[1] - b[1]) < 40; };
@@ -175,7 +202,7 @@ function mpLinesSvg(t) {
   let o = "";
   /* occupied ground: the line splits the map, and each side takes a colour (west/east for a front that runs north-south) */
   (LN[t] || []).forEach(l => {
-    if (!l.zone) return;
+    if (!l.zone || isTrench(l)) return;
     if (mpClosed(g, l)) { o += `<g clip-path="url(#mp-clip)" class="zn"><path class="${l.zone === "w" ? "zn-me" : "zn-foe"}" d="M${l.pts.map(p => mpXY(g, p[0], p[1]).map(v => v.toFixed(0)).join(" ")).join("L")}Z"/></g>`; return; }
     let q = l.pts.map(p => mpXY(g, p[0], p[1])); if (q[0][1] > q[q.length - 1][1]) q = q.reverse();
     const f = n => n.toFixed(0), body = q.map(p => f(p[0]) + " " + f(p[1])).join("L"), a = q[0], z = q[q.length - 1];
@@ -184,9 +211,10 @@ function mpLinesSvg(t) {
   });
   (LN[t] || []).forEach(l => {
     const d = mpPath(g, l.pts), on = l.id === mpSel, pts = l.pts.map(p => mpXY(g, p[0], p[1]));
-    o += `<g class="ln${on ? " on" : ""}"><path class="ln-h" d="${d}"/><path class="ln-l" d="${d}"/><path class="ln-hit" d="${d}" data-a="mapLine" data-id="${esc(l.id)}"/>`;
+    const tr = isTrench(l);
+    o += `<g class="ln${on ? " on" : ""}${tr ? ` tr tr-${l.side} tr-${l.tier}` : ""}"><path class="ln-h" d="${d}"/>${tr ? `<path class="tr-b" d="${d}"/>` : ""}<path class="ln-l" d="${d}"/><path class="ln-hit" d="${d}" data-a="mapLine" data-id="${esc(l.id)}"/>`;
     [pts[0], pts[pts.length - 1]].forEach(p => { o += `<circle class="ln-e" cx="${p[0].toFixed(0)}" cy="${p[1].toFixed(0)}" r="6"/>`; });
-    const mid = pts[Math.floor(pts.length / 2)]; o += `<text class="ln-t" x="${mid[0].toFixed(0)}" y="${(mid[1] - 12).toFixed(0)}">${esc(l.name)}</text>`;
+    const mid = pts[Math.floor(pts.length / 2)]; o += `<text class="ln-t" x="${mid[0].toFixed(0)}" y="${(mid[1] - 12).toFixed(0)}">${esc(l.name)}${tr ? ` · ${TR_TIER[l.tier]}` : ""}</text>`;
     if (on && edit) {
       pts.slice(0, -1).forEach((p, i) => { const q = pts[i + 1]; o += `<circle class="vm" data-i="${i}" cx="${((p[0] + q[0]) / 2).toFixed(0)}" cy="${((p[1] + q[1]) / 2).toFixed(0)}" r="${hr - 3}"/>`; });
       pts.forEach((p, i) => { o += `<circle class="vh${i === mpVx ? " on" : ""}" data-a="mapVx" data-i="${i}" cx="${p[0].toFixed(0)}" cy="${p[1].toFixed(0)}" r="${hr}"/>`; });
@@ -195,7 +223,7 @@ function mpLinesSvg(t) {
   });
   if (mpDraft.length) {
     const pts = mpDraft.map(p => mpXY(g, p[0], p[1]));
-    o += `<g class="ln draft"><path class="ln-l" d="${mpPath(g, mpDraft)}"/>${pts.map(p => `<circle class="vh" cx="${p[0].toFixed(0)}" cy="${p[1].toFixed(0)}" r="${hr}"/>`).join("")}</g>`;
+    o += `<g class="ln draft${mpTool === "trench" ? ` tr tr-${mpTrNew.side} tr-${mpTrNew.tier}` : ""}"><path class="ln-l" d="${mpPath(g, mpDraft)}"/>${pts.map(p => `<circle class="vh" cx="${p[0].toFixed(0)}" cy="${p[1].toFixed(0)}" r="${hr}"/>`).join("")}</g>`;
   }
   return o;
 }
@@ -270,9 +298,9 @@ function mpHideBar(t) {
   return `<div class="mp-hb" role="group" aria-label="Show or hide troops on the map"><span class="mp-hb-k">Show</span><div class="mp-hb-row">${sides}${cabs.length ? `<i class="mp-sep"></i>${cabChips}` : ""}</div><div class="mp-hb-act">${cabs.length ? `<button class="btn sm plain" data-a="mapHideAll" data-v="hide">Hide all</button>` : ""}<button class="btn sm plain" data-a="mapHideAll" data-v="show" ${anyOff ? "" : "disabled"}>Show all</button></div></div>`;
 }
 const mpTerrCard = () => `<section class="panel mp-card"><div class="panel-h" style="margin:0"><div><h3>Terrain</h3><p>What the ground does to a force</p></div><button class="btn sm" data-a="mapTerrCard" aria-expanded="${mpTerrOpen}">${mpTerrOpen ? "Hide" : "Show"}</button></div>${mpTerrOpen ? `<div style="margin-top:10px">${((window.SENTINEL_TERRAIN || {}).effects || []).map(e => `<div class="tr-fx"><i class="k-${e.k}"></i><div><b>${esc(e.n)}</b><span>${esc(e.move)}</span><span>${esc(e.fight)}</span></div></div>`).join("")}<p class="muted" style="margin-top:10px">Suggested values: put them in the Situational multiplier of the Combat Calculator. The chairs rule on any crossing.</p></div>` : ""}</section>`;
-const mpChips = (L, act, sel) => L.map(l => `<button class="mp-chip${l.id === sel ? " on" : ""}" data-a="${act}" data-id="${esc(l.id)}"><i class="mp-sw"></i><b>${esc(l.name)}</b><span>${plural(l.pts.length, "point")}</span></button>`).join("");
+const mpChips = (L, act, sel, tr) => L.map(l => `<button class="mp-chip${l.id === sel ? " on" : ""}${isTrench(l) ? ` tr-${l.side}` : ""}" data-a="${act}" data-id="${esc(l.id)}"><i class="mp-sw"></i><b>${esc(l.name)}</b><span>${tr ? TR_TIER[l.tier] : plural(l.pts.length, "point")}</span></button>`).join("");
 function mpViewBar(t) {
-  const L = LN[t];
+  const L = LN[t].filter(l => !isTrench(l));
   return `<section class="panel mp-card mp-bar"><div class="mp-bar-lines"><span class="mp-bar-k">Battle lines</span><div class="mp-chips">${mpChips(L, "mapFocus") || '<span class="muted">The chairs have not drawn a battle line yet.</span>'}</div></div></section>`;
 }
 /* one context strip under the tools: what this tool does on the left, its controls on the right */
@@ -281,9 +309,14 @@ const mpHint = (title, text) => `${title ? `<b>${title}</b>` : ""}<span>${text}<
 const mpLbl = t => `<span class="mp-lbl">${t}</span>`;
 function mpChairBar(t) {
   const L = LN[t], sel = L.find(l => l.id === mpSel);
-  const tools = seg("mapTool", [["edit", "Reshape"], ["draw", "Draw a line"], ["city", "Cities"], ["pts", "Weak / fortified"]], mpTool, "t");
+  const tools = seg("mapTool", [["edit", "Reshape"], ["draw", "Draw a line"], ["trench", "Trenches"], ["city", "Cities"], ["pts", "Weak / fortified"]], mpTool, "t");
+  const sides = [["me", sideLbl("me")], ["foe", sideLbl("foe")]], tiers = TR_TIERS.map(k => [k, TR_TIER[k]]);
   let ctx = "";
-  if (mpTool === "draw") {
+  if (mpTool === "trench") {
+    const have = L.filter(l => isTrench(l) && l.side === mpTrNew.side);
+    ctx = mpCtx(mpHint(`Digging: ${esc(trName(mpTrNew.side, mpTrNew.tier))} <em class="mp-n">${plural(mpDraft.length, "point")}</em>`, `Pick the side and the kind, then click the map from one end of the trench to the other. ${esc(sideLbl(mpTrNew.side))} has ${have.length ? TR_TIERS.map(k => `${have.filter(l => l.tier === k).length} ${TR_TIER[k].toLowerCase()}`).join(", ") : "no trenches yet"}.`),
+      `${seg("mapTrNewSide", sides, mpTrNew.side, "s")}${seg("mapTrNewTier", tiers, mpTrNew.tier, "k")}<i class="mp-sep"></i><button class="btn sm" data-a="mapUndoPt" ${mpDraft.length ? "" : "disabled"}>Undo point</button><button class="btn sm" data-a="mapCancelDraw">Cancel</button><button class="btn sm primary" data-a="mapFinish" ${mpDraft.length < 2 ? "disabled" : ""}>Finish trench</button>`);
+  } else if (mpTool === "draw") {
     ctx = mpCtx(mpHint(`Drawing a new line <em class="mp-n">${plural(mpDraft.length, "point")}</em>`, "Click the map from one end of the line to the other."),
       `<button class="btn sm" data-a="mapUndoPt" ${mpDraft.length ? "" : "disabled"}>Undo point</button><button class="btn sm" data-a="mapCancelDraw">Cancel</button><button class="btn sm primary" data-a="mapFinish" ${mpDraft.length < 2 ? "disabled" : ""}>Finish line</button>`);
   } else if (mpTool === "pts") {
@@ -295,13 +328,18 @@ function mpChairBar(t) {
     const cur = mpCity && ((LN.citySides && LN.citySides[t]) || {})[mpCity];
     ctx = mpCity ? mpCtx(mpHint(esc(mpCity), cur ? "Given to a side by the chairs." : "Default side. Who holds it?"), seg("mapCitySide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["n", "Neutral"]], cur || "", "s") + `<button class="btn sm" data-a="mapCityDef" ${cur ? "" : "disabled"}>Back to default</button>`)
       : mpCtx(mpHint("", "Click a city on the map, then give it to a side."));
+  } else if (sel && isTrench(sel)) {
+    ctx = mpCtx(mpHint(`${esc(sel.name)} <em class="mp-n">${esc(sideLbl(sel.side))} · ${TR_TIER[sel.tier]} · ${plural(sel.pts.length, "point")}</em>`, mpVx != null ? "Point chosen. Remove it, or double-click it." : "Drag a round point to move it, a small one to bend the trench."),
+      `${seg("mapTrSide", sides, sel.side, "s")}${seg("mapTrTier", tiers, sel.tier, "k")}<i class="mp-sep"></i><button class="btn sm" data-a="mapRename">Rename</button><button class="btn sm" data-a="mapSimplify">Fewer points</button><button class="btn sm" data-a="mapDelPt" ${mpVx != null && sel.pts.length > 2 ? "" : "disabled"}>Remove point</button><button class="btn sm danger" data-a="mapDelLine">Delete trench</button>`);
   } else if (sel) {
     const zone = seg("mapZone", mpClosed(mpGeo(t), sel) ? [["", "Off"], ["w", "Blue inside"], ["e", "Red inside"]] : [["", "Off"], ["w", "Blue west"], ["e", "Blue east"]], sel.zone || "", "z");
     ctx = mpCtx(mpHint(`${esc(sel.name)} <em class="mp-n">${plural(sel.pts.length, "point")}</em>`, mpVx != null ? "Point chosen. Remove it, or double-click it." : "Drag a round point to move it, a small one to bend the line."),
       `${mpLbl("Zone")}${zone}<i class="mp-sep"></i><button class="btn sm" data-a="mapRename">Rename</button><button class="btn sm" data-a="mapSimplify">Fewer points</button><button class="btn sm" data-a="mapDelPt" ${mpVx != null && sel.pts.length > 2 ? "" : "disabled"}>Remove point</button><button class="btn sm danger" data-a="mapDelLine">Delete line</button>`);
   } else ctx = mpCtx(mpHint("", L.length ? "Click a line to move or bend it, or pick one below." : "No battle lines yet. Draw the first one."));
-  const chips = mpChips(L, "mapLine", mpTool === "draw" ? null : mpSel) + (mpTool === "draw" ? "" : `<button class="mp-chip mp-add" data-a="mapTool" data-t="draw">+ New line</button>`);
-  return `<section class="panel mp-card mp-bar"><div class="mp-bar-top">${tools}<button class="btn sm plain" data-a="mapReset">Restore defaults</button></div>${ctx}<div class="mp-bar-lines"><span class="mp-bar-k">Battle lines</span><div class="mp-chips">${chips}</div></div></section>`;
+  const lines = L.filter(l => !isTrench(l)), trs = L.filter(isTrench).sort((a, b) => (a.side === b.side ? 0 : a.side === "me" ? -1 : 1) || TR_TIERS.indexOf(a.tier) - TR_TIERS.indexOf(b.tier));
+  const chips = mpChips(lines, "mapLine", mpDrawing() ? null : mpSel) + (mpDrawing() ? "" : `<button class="mp-chip mp-add" data-a="mapTool" data-t="draw">+ New line</button>`);
+  const trChips = mpChips(trs, "mapLine", mpDrawing() ? null : mpSel, true) + (mpDrawing() ? "" : `<button class="mp-chip mp-add" data-a="mapTool" data-t="trench">+ New trench</button>`);
+  return `<section class="panel mp-card mp-bar"><div class="mp-bar-top">${tools}<button class="btn sm plain" data-a="mapReset">Restore defaults</button></div>${ctx}<div class="mp-bar-lines"><span class="mp-bar-k">Battle lines</span><div class="mp-chips">${chips}</div></div><div class="mp-bar-lines"><span class="mp-bar-k">Trenches</span><div class="mp-chips">${trChips}</div></div></section>`;
 }
 
 const MAPA = {
@@ -319,15 +357,15 @@ const MAPA = {
       if (L.length >= 60) { toast("Sixty points is the most a map can hold"); return; }
       const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); L.push({ id, kind: mpPtNew, lat: ll[0], lon: ll[1], r: 50, name: "" }); mpPt = id; mpPtNew = null; render(); mpPtSave(); return;
     }
-    if (mpTS && mpTool !== "draw") { mpTS = null; mpRG = null; render(); return; }
-    if (mpTool === "draw") {
+    if (mpTS && !mpDrawing()) { mpTS = null; mpRG = null; render(); return; }
+    if (mpDrawing()) {
       const svg = el.ownerSVGElement, pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(svg.getScreenCTM().inverse());
       if (mpDraft.length >= 120) { toast("That is the longest a line can be"); return; }
       mpDraft.push(mpLL(mpGeo(S.topic), q.x, q.y)); mpDraftUi(); return;
     }
     if (mpSel) { mpSel = null; mpVx = null; render(); }
   },
-  mapLine: el => { if (mpTool === "draw" && ROLE !== "delegate") return; mpSel = el.dataset.id; mpVx = null; if (ROLE === "delegate") { MAPA.mapFocus(el); return; } render(); },
+  mapLine: el => { if (mpDrawing() && ROLE !== "delegate") return; mpSel = el.dataset.id; mpVx = null; if (ROLE === "delegate") { MAPA.mapFocus(el); return; } render(); },
   mapVx: el => { mpVx = Number(el.dataset.i); render(); },
   mapFocus: el => {
     const l = LN[S.topic].find(x => x.id === el.dataset.id); if (!l) return; const g = mpGeo(S.topic), ps = l.pts.map(p => mpXY(g, p[0], p[1]));
@@ -336,12 +374,22 @@ const MAPA = {
   },
   mapFinish: () => {
     if (mpDraft.length < 2) return;
-    if (LN[S.topic].length >= 12) { toast("Twelve lines is the most a map can hold"); return; }
+    if (LN[S.topic].length >= 40) { toast("Forty lines and trenches is the most a map can hold"); return; }
+    if (mpTool === "trench") {   /* a trench is named after its side and kind; rename it afterwards if you like */
+      const id = "l" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), { side, tier } = mpTrNew;
+      LN[S.topic].push({ id, kind: "trench", side, tier, zone: "", name: trName(side, tier), pts: mpDraft.slice() }); mpDraft = []; mpVx = null;
+      const nx = TR_TIERS[TR_TIERS.indexOf(tier) + 1]; if (nx) mpTrNew = { side, tier: nx };   /* next: the trench behind it */
+      toast(`${trName(side, tier)} dug`); render(); mpSave(); return;
+    }
     askText("Name this line", "Name", mpName(), nm => {
       if (mpDraft.length < 2) return; const id = "l" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
       LN[S.topic].push({ id, zone: "w", name: nm.slice(0, 40), pts: mpDraft.slice() }); mpSel = id; mpDraft = []; mpTool = "edit"; mpVx = null; render(); mpSave();
     });
   },
+  mapTrNewSide: el => { mpTrNew = { ...mpTrNew, side: el.dataset.s }; render(); },
+  mapTrNewTier: el => { mpTrNew = { ...mpTrNew, tier: el.dataset.k }; render(); },
+  mapTrSide: el => { const l = LN[S.topic].find(x => x.id === mpSel); if (!isTrench(l) || l.side === el.dataset.s) return; const auto = l.name === trName(l.side, l.tier); l.side = el.dataset.s; if (auto) l.name = trName(l.side, l.tier); render(); mpSave(); },
+  mapTrTier: el => { const l = LN[S.topic].find(x => x.id === mpSel); if (!isTrench(l) || l.tier === el.dataset.k) return; const auto = l.name === trName(l.side, l.tier); l.tier = el.dataset.k; if (auto) l.name = trName(l.side, l.tier); render(); mpSave(); },
   mapYes: () => { const cb = UI.askCb; closeModal(); if (cb) cb(); },
   mapSimplify: () => {   /* drop the points that barely bend the line (Douglas-Peucker), the ends stay */
     const l = LN[S.topic].find(x => x.id === mpSel); if (!l || l.pts.length < 4) return; const g = mpGeo(S.topic), xy = l.pts.map(p => mpXY(g, p[0], p[1])), keep = new Array(xy.length).fill(false), tol = 5;

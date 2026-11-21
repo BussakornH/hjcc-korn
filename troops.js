@@ -187,7 +187,7 @@ function mpTroopsSvg(t) {
     if (mpHid(t, x)) return "";
     const p = mpXY(g, x.lat, x.lon); if (p[0] < -20 || p[0] > g.W + 20 || p[1] < -20 || p[1] > g.H + 20) return "";
     const pc = x.maxhp > 0 ? Math.max(0, Math.min(1, x.hp / x.maxhp)) : 0, on = x.id === mpTS;
-    return `<g class="trp${on ? " on" : ""}${x.lost ? " dead" : ""}" data-a="mapTroop" data-id="${esc(x.id)}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><g class="trp-i">${on ? '<circle class="trp-r" r="34"/>' : ""}${x.id === mpPing ? '<circle class="trp-ping" r="34"/><circle class="trp-ping b" r="34"/>' : ""}<circle class="trp-hit" r="30"/><image href="symbols/${x.aff}/${x.code}.png" x="-30" y="-30" width="60" height="60"/><rect class="trp-hb" x="-19" y="20" width="38" height="4.5" rx="2.2"/><rect x="-19" y="20" width="${(38 * pc).toFixed(1)}" height="4.5" rx="2.2" style="fill:${mpHpCol(pc * 100)}"/><text class="trp-n" y="38">${esc(x.name)}</text>${cabTag(x)}</g></g>`;
+    return `<g class="trp${on ? " on" : ""}${x.lost ? " dead" : ""}" data-a="mapTroop" data-id="${esc(x.id)}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><g class="trp-i">${on ? '<circle class="trp-r" r="34"/>' : ""}${x.id === mpPing ? '<circle class="trp-ping" r="34"/><circle class="trp-ping b" r="34"/>' : ""}<circle class="trp-hit" r="30"/><image href="symbols/${x.aff}/${x.code}.png" x="-30" y="-30" width="60" height="60"/><rect class="trp-hb" x="-19" y="20" width="38" height="4.5" rx="2.2"/><rect x="-19" y="20" width="${(38 * pc).toFixed(1)}" height="4.5" rx="2.2" style="fill:${mpHpCol(pc * 100)}"/><text class="trp-n" y="38">${esc(x.name)}</text>${cabTag(x)}${mpTrenchOf(t, x) ? '<path class="trp-tr" d="M-19 28.5l3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3"/>' : ""}</g></g>`;
   }).join("");
 }
 /* the cabinet's short code in its colour, top left of the marker */
@@ -276,6 +276,7 @@ function mpTroopCard() {
   const dom = mpDomain(x.code);
   return `<section class="panel mp-card"><div class="trc"><img src="symbols/${x.aff}/${x.code}.png" alt=""><div><b>${esc(x.name)}</b><span>${esc(x.code)}${x.lost ? " · destroyed" : ""}</span></div></div>
     <div class="trc-hp"><div class="trc-bar"><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></div><span>HP <b>${fx(x.hp)}</b> / ${fx(x.maxhp)} · ${pc}%</span></div>
+    ${(() => { const tr = mpTrenchOf(S.topic, x); return tr ? `<p class="trc-tr"><b>In the ${esc(tr.name)}</b> (${TR_TIER[tr.tier].toLowerCase()}): takes ${fx(num(D().rules.trenchCut, 50))}% less damage when attacked.</p>` : ""; })()}
     <div class="trc-st"><span>ATK <b>${fx(x.atk)}</b></span><span>MOV <b>${fx(x.mov)}</b></span><span>RNG <b>${fx(x.rng)}</b></span><span class="trc-pos">AT <b>${mpLatLon(x)}</b></span></div>
     <div class="mp-act trc-go"><button class="btn sm" data-a="mapTrPin" title="Move the map to this unit and mark where it stands">${ico("pin")} Pinpoint location</button>${local && ROLE !== "admin" ? `<button class="btn sm primary" data-a="mapTrCalc" title="Put this unit into the combat calculator and open it">${ico("swords")} Open in calculator</button>` : ""}</div>
     <p class="muted" style="margin:8px 0 0">${x.mov > 0 ? `Reach this turn: up to ${km} km on open ground${dom === "air" ? "" : dom === "sea" ? ", on water only" : ". Mountains, forest, marsh and river crossings shorten it"}. The solid line is the full move, the dashed line half of it.` : "This unit does not move."}</p>
@@ -372,16 +373,37 @@ function mpPinpoint(x) {
 function mpPlaceMany(ids, lat, lon) {
   const d = D(), have = new Set(mpTroops().map(x => x.uid)), us = ids.map(id => d.units.find(y => y.id === id)).filter(u => u && !lost(u) && !have.has(u.id));
   if (!us.length) return 0;
-  const g = mpGeo(S.topic), c = mpXY(g, lat, lon), svg = document.querySelector(".mapsvg"), k = svg ? num(svg.style.getPropertyValue("--k"), 0) || (MPV ? MPV.w / Math.max(1, svg.getBoundingClientRect().width) : 1) : 1, gap = 50 * k;
-  const spots = [[0, 0]]; for (let ring = 1; spots.length < us.length; ring++) for (let i = 0; i < 6 * ring && spots.length < us.length; i++) { const a = (i / (6 * ring)) * Math.PI * 2; spots.push([Math.cos(a) * ring * gap, Math.sin(a) * ring * gap]); }
-  const T = (TR[S.topic] = TR[S.topic] || []);
+  const t = S.topic, g = mpGeo(t), c = mpXY(g, lat, lon), svg = document.querySelector(".mapsvg"), k = svg ? num(svg.style.getPropertyValue("--k"), 0) || (MPV ? MPV.w / Math.max(1, svg.getBoundingClientRect().width) : 1) : 1, gap = 50 * k;
+  /* land troops arrive in their side's backline trench (the one nearest the click), spread along it; ships, aircraft and a side with no backline trench go where you clicked */
+  const backOf = side => { let best = null, bd = Infinity; (LN && LN[t] || []).forEach(l => { if (!isTrench(l) || l.side !== side || l.tier !== "back") return; const q = l.pts.map(a => mpXY(g, a[0], a[1])), n = mpNearOn(q, c[0], c[1]); if (n.d < bd) { bd = n.d; best = { l, q, n }; } }); return best; };
+  const groups = new Map(); us.forEach(u => { const land = mpDomain(MPCODES.includes(u.tcode) ? u.tcode : "INF") === "land", b = land ? backOf(u.side) : null, key = b ? b.l.id : "_click"; if (!groups.has(key)) groups.set(key, { b, us: [] }); groups.get(key).us.push(u); });
+  const at = (q, s) => { for (let i = 0; i < q.length - 1; i++) { const A = q[i], B = q[i + 1], len = Math.hypot(B[0] - A[0], B[1] - A[1]); if (s <= len || i === q.length - 2) { const u = len ? Math.max(0, Math.min(1, s / len)) : 0; return { p: [A[0] + (B[0] - A[0]) * u, A[1] + (B[1] - A[1]) * u], dir: len ? [(B[0] - A[0]) / len, (B[1] - A[1]) / len] : [1, 0] }; } s -= len; } return { p: q[0], dir: [1, 0] }; };
+  const spots = new Map(), toTrench = [], noTrench = new Set();
+  groups.forEach(({ b, us: list }) => {
+    if (!b) {
+      const hex = [[0, 0]]; for (let ring = 1; hex.length < list.length; ring++) for (let i = 0; i < 6 * ring && hex.length < list.length; i++) { const a = (i / (6 * ring)) * Math.PI * 2; hex.push([Math.cos(a) * ring * gap, Math.sin(a) * ring * gap]); }
+      list.forEach((u, i) => { spots.set(u.id, [c[0] + hex[i][0], c[1] + hex[i][1]]); if (mpDomain(MPCODES.includes(u.tcode) ? u.tcode : "INF") === "land" && LN && (LN[t] || []).some(isTrench)) noTrench.add(u.side); });
+      return;
+    }
+    const q = b.q; let L = 0; for (let i = 0; i < q.length - 1; i++) L += Math.hypot(q[i + 1][0] - q[i][0], q[i + 1][1] - q[i][1]);
+    /* every unit stays on the trench line itself (so it counts as dug in): one marker apart around the click, closer together when the trench is too short for that */
+    const n = list.length, step = n > 1 ? Math.min(gap, L / (n - 1)) : 0;
+    let s0 = b.n.s - (n - 1) * step / 2; s0 = Math.max(0, Math.min(Math.max(0, L - (n - 1) * step), s0));
+    list.forEach((u, i) => spots.set(u.id, at(q, s0 + i * step).p));
+    toTrench.push(`${plural(list.length, "unit")} to ${b.l.name}`);
+  });
+  const T = (TR[t] = TR[t] || []);
   us.forEach((u, i) => {
-    const ll = mpLL(g, c[0] + spots[i][0], c[1] + spots[i][1]);
-    const x = { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + i, uid: u.id, name: u.name, code: MPCODES.includes(u.tcode) ? u.tcode : "INF", aff: mpAffOf(u.side), side: u.side, cab: u.cab || "", lat: ll[0], lon: ll[1], hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), lost: false };
-    x.id = x.id.slice(0, 24); T.push(x); mpAg[x.id] = { name: u.name, hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng) }; mpPick.delete(u.id);
+    const sp = spots.get(u.id), ll = mpLL(g, sp[0], sp[1]);
+    const x = { id: ("p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + i).slice(0, 24), uid: u.id, name: u.name, code: MPCODES.includes(u.tcode) ? u.tcode : "INF", aff: mpAffOf(u.side), side: u.side, cab: u.cab || "", lat: ll[0], lon: ll[1], hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), lost: false };
+    T.push(x); mpAg[x.id] = { name: u.name, hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng) }; mpPick.delete(u.id);
   });
   if (T.length > 200) toast("A map holds 200 troops at most: take some off first");
-  mpRG = null; render(); mpTroopSave(); if (us.length > 1) toast(plural(us.length, "unit") + " put on the map"); return us.length;
+  mpRG = null; render(); mpTroopSave();
+  const note = toTrench.length ? toTrench.join(", ") : us.length > 1 ? plural(us.length, "unit") + " put on the map" : "";
+  const miss = [...noTrench].map(sd => sideLbl(sd)).join(" and ");
+  if (note || miss) toast(note + (miss ? `${note ? ". " : ""}No ${miss} backline trench yet: placed where you clicked` : ""));
+  return us.length;
 }
 const mpTroopPlaceAt = (lat, lon) => mpPlaceMany([...mpPickLive()], lat, lon) > 0;
 

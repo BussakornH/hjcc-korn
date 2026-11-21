@@ -349,10 +349,19 @@ function zoneNet(u) {
   const inside = k => pts.some(q => q.kind === k && mpKm(m.lat, m.lon, q.lat, q.lon) <= q.r);
   return (inside("weak") ? ZONE_WEAK : 0) - (inside("fort") ? ZONE_FORT : 0);
 }
-/* h0: HP before this step, h: HP after it; moves every damaged unit's HP by its zone net and notes it in fx */
-function zoneAdjust(units, h0, h, fx) {
+/* trenches (drawn by the chairs on the battle map, map.js): a defender whose marker stands in a trench of its own side takes the rules' trenchCut % less damage */
+function trenchOfUnit(u) {
+  if (typeof mpTrenchOf !== "function" || typeof TR === "undefined") return null;
+  const m = (TR[S.topic] || []).find(x => x.uid === u.id); return m ? mpTrenchOf(S.topic, m) : null;
+}
+/* h0: HP before this step, h: HP after it; moves every damaged unit's HP by its zone net and notes it in fx.
+   tfx (defenders only): the trench cut comes first, then the weak / fortified point; what the trench saved is noted in tfx */
+function zoneAdjust(units, h0, h, fx, tfx) {
+  const cut = clamp(num(D().rules.trenchCut, 50), 0, 100) / 100;
   units.forEach(u => {
-    const a = h0.get(u.id), b = h.get(u.id), lostHp = a - b; if (!(lostHp > 1e-9)) return;
+    const a = h0.get(u.id), b = h.get(u.id); let lostHp = a - b; if (!(lostHp > 1e-9)) return;
+    const tr = tfx && cut > 0 ? trenchOfUnit(u) : null;
+    if (tr) { const kept = lostHp * cut; lostHp -= kept; h.set(u.id, a - lostHp); const o = tfx.get(u.id) || { name: tr.name, tier: tr.tier, saved: 0 }; o.saved = r2(o.saved + kept); tfx.set(u.id, o); }
     const net = zoneNet(u); if (!net) return;
     const to = Math.min(a, Math.max(0, lostHp + net)); h.set(u.id, a - to); fx.set(u.id, (fx.get(u.id) || 0) + (to - lostHp));
   });
@@ -369,8 +378,8 @@ function resolve(attIds, defIds, o) {
   let main = strike(A.filter(u => !bA.includes(u)), dB, o.am, o.mult, o.bonus, R);
   if (!dB.length) main = noHit(main);
   const hA = new Map(A.map(u => [u.id, num(u.hp)])), hB = new Map(B.map(u => [u.id, num(u.hp)]));
-  const zfx = new Map(), hB0 = new Map(hB), over = dB.length ? spread(dB, hB, main.dealt, R.spread) : 0;
-  zoneAdjust(dB, hB0, hB, zfx);
+  const zfx = new Map(), tfx = new Map(), hB0 = new Map(hB), over = dB.length ? spread(dB, hB, main.dealt, R.spread) : 0;
+  zoneAdjust(dB, hB0, hB, zfx, tfx);
   if (main.self > 0) dA.forEach(u => hA.set(u.id, Math.max(0, hA.get(u.id) - num(u.hp) * main.self / 100)));
   /* counter-attack: every defender still standing after the hit strikes back at full strength, even one with a sliver of HP left (and even if it took no damage).
      One reduced to 0 still strikes back, at deadCounter % of its attack (the chairs' rule: 50% by default; 0 turns it off). */
@@ -380,12 +389,12 @@ function resolve(attIds, defIds, o) {
   if (counter && !stand.length) counter = { ...noHit(counter), none: true };
   else if (counter && !dA.length) counter = { ...noHit(counter), safe: true };
   let overC = 0;
-  if (counter && dA.length) { overC = spread(dA, hA, counter.dealt, R.spread); if (counter.self > 0) { const b1 = new Map(hB); dB.forEach(u => hB.set(u.id, Math.max(0, hB.get(u.id) - num(u.hp) * counter.self / 100))); zoneAdjust(dB, b1, hB, zfx); } }
+  if (counter && dA.length) { overC = spread(dA, hA, counter.dealt, R.spread); if (counter.self > 0) { const b1 = new Map(hB); dB.forEach(u => hB.set(u.id, Math.max(0, hB.get(u.id) - num(u.hp) * counter.self / 100))); zoneAdjust(dB, b1, hB, zfx, tfx); } }
   zoneAdjust(dA, new Map(A.map(u => [u.id, num(u.hp)])), hA, zfx);
   [hA, hB].forEach(h => h.forEach((v, k) => h.set(k, Math.max(0, r2(v)))));
-  return { A, B, main, counter, hA, hB, over, overC, safe, zfx, noShip: [...bA, ...bB] };
+  return { A, B, main, counter, hA, hB, over, overC, safe, zfx, tfx, noShip: [...bA, ...bB] };
 }
-const zoneNote = (r, u) => { const z = r.zfx && r.zfx.get(u.id); return z ? ` (${z > 0 ? "weak point" : "fortified point"}: ${z > 0 ? "+" : "−"}${fx(Math.abs(z))} damage)` : ""; };
+const zoneNote = (r, u) => { const z = r.zfx && r.zfx.get(u.id), t = r.tfx && r.tfx.get(u.id); return (t ? ` (in the ${esc(t.name)}: −${fx(t.saved)} damage)` : "") + (z ? ` (${z > 0 ? "weak point" : "fortified point"}: ${z > 0 ? "+" : "−"}${fx(Math.abs(z))} damage)` : ""); };
 const grpNames = L => L.length === 1 ? L[0].name : `${L[0].name} +${L.length - 1}`;
 function battleMsg(r) {
   const kd = r.B.filter(u => !(r.hB.get(u.id) > 0)).length, ka = r.A.filter(u => !(r.hA.get(u.id) > 0)).length;
@@ -1173,6 +1182,7 @@ function pgRules() {
     ${step(4, "Damage formula", null, "Turns the total effective attack into damage. Pick a preset or write your own.", fbox)}
     ${step(5, "Results chart", "useChart", "Looks the damage up as a % of the defenders' HP and decides how much of it lands and what the attacker loses.", chartT)}
     ${step(6, "Spread and finish", null, "How the damage is shared between several defenders, and what happens at 0 HP.", fin)}
+    ${step(7, "Trenches", null, "Each side digs frontline, support and backline trenches on the battle map (Trenches tool). Land troops put on the map arrive in their side's backline trench and advance from there. A unit standing in a trench of its own side is dug in: it takes less damage when attacked.", `<div class="fgrid"><div class="fld span2"><label for="r-tcut">Trench protection</label><input id="r-tcut" class="n" type="number" min="0" max="100" step="5" value="${fx(num(R.trenchCut, 50))}" data-c="rnum" data-k="trenchCut"><small>% less damage taken by a unit in its side's trench (0 turns trenches off in combat).</small></div><div class="fld span2"><label for="r-tkm">Counts as in the trench within</label><input id="r-tkm" class="n" type="number" min="1" max="300" step="5" value="${fx(num(R.trenchKm, 30))}" data-c="rnum" data-k="trenchKm"><small>km of the trench line, measured from the unit's marker.</small></div></div>`)}
   </ol>
   ${dirs}
   <section class="panel"><div class="panel-h"><div><h3>Sub classes</h3><p>The kinds of unit in each class, with the stats used when you add units. ${bookletFor() ? "These are the chairs' Military Resources Booklet figures (A, D and M as ATK, HP and MOV)." : "<b>All are placeholders until your allocation and the chairs' booklet arrive.</b>"} Editing a sub class does not change units already added; press “Update units” to push the new stats to them.</p></div><button class="btn sm" data-a="typeAdd">${ico("plus")} Add sub class</button></div>
