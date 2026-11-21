@@ -169,7 +169,7 @@ function mpCitiesSvg(t) {
 
 /* ---------- trenches ----------
    A trench is a battle line with kind "trench", a side ("me" / "foe") and a tier: frontline, support or backline. Each side digs its own.
-   Land troops put on the map go to their side's backline trench first (troops.js), and a unit standing within trenchKm of a trench of its
+   Troops go down where the chair puts them (the chairs move them into trenches), and a unit standing within trenchKm of a trench of its
    own side counts as in it: it takes trenchCut % less damage when attacked (the combat rules, app.js). */
 const TR_TIER = { front: "Frontline", support: "Support", back: "Backline" }, TR_TIERS = ["front", "support", "back"];
 const isTrench = l => !!l && l.kind === "trench";

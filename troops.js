@@ -395,36 +395,17 @@ function mpPinpoint(x) {
 function mpPlaceMany(ids, lat, lon) {
   const d = D(), have = new Set(mpTroops().map(x => x.uid)), us = ids.map(id => d.units.find(y => y.id === id)).filter(u => u && !lost(u) && !have.has(u.id));
   if (!us.length) return 0;
+  /* units go down exactly where the chair clicked or dropped them (several in a tight honeycomb around that point); the chairs move them into trenches themselves */
   const t = S.topic, g = mpGeo(t), c = mpXY(g, lat, lon), svg = document.querySelector(".mapsvg"), k = svg ? num(svg.style.getPropertyValue("--k"), 0) || (MPV ? MPV.w / Math.max(1, svg.getBoundingClientRect().width) : 1) : 1, gap = 50 * k;
-  /* land troops arrive in their side's backline trench (the one nearest the click), spread along it; ships, aircraft and a side with no backline trench go where you clicked */
-  const backOf = side => { let best = null, bd = Infinity; (LN && LN[t] || []).forEach(l => { if (!isTrench(l) || l.side !== side || l.tier !== "back") return; const q = l.pts.map(a => mpXY(g, a[0], a[1])), n = mpNearOn(q, c[0], c[1]); if (n.d < bd) { bd = n.d; best = { l, q, n }; } }); return best; };
-  const groups = new Map(); us.forEach(u => { const land = mpDomain(MPCODES.includes(u.tcode) ? u.tcode : "INF") === "land", b = land ? backOf(u.side) : null, key = b ? b.l.id : "_click"; if (!groups.has(key)) groups.set(key, { b, us: [] }); groups.get(key).us.push(u); });
-  const at = (q, s) => { for (let i = 0; i < q.length - 1; i++) { const A = q[i], B = q[i + 1], len = Math.hypot(B[0] - A[0], B[1] - A[1]); if (s <= len || i === q.length - 2) { const u = len ? Math.max(0, Math.min(1, s / len)) : 0; return { p: [A[0] + (B[0] - A[0]) * u, A[1] + (B[1] - A[1]) * u], dir: len ? [(B[0] - A[0]) / len, (B[1] - A[1]) / len] : [1, 0] }; } s -= len; } return { p: q[0], dir: [1, 0] }; };
-  const spots = new Map(), toTrench = [], noTrench = new Set();
-  groups.forEach(({ b, us: list }) => {
-    if (!b) {
-      const hex = [[0, 0]]; for (let ring = 1; hex.length < list.length; ring++) for (let i = 0; i < 6 * ring && hex.length < list.length; i++) { const a = (i / (6 * ring)) * Math.PI * 2; hex.push([Math.cos(a) * ring * gap, Math.sin(a) * ring * gap]); }
-      list.forEach((u, i) => { spots.set(u.id, [c[0] + hex[i][0], c[1] + hex[i][1]]); if (mpDomain(MPCODES.includes(u.tcode) ? u.tcode : "INF") === "land" && LN && (LN[t] || []).some(isTrench)) noTrench.add(u.side); });
-      return;
-    }
-    const q = b.q; let L = 0; for (let i = 0; i < q.length - 1; i++) L += Math.hypot(q[i + 1][0] - q[i][0], q[i + 1][1] - q[i][1]);
-    /* every unit stays on the trench line itself (so it counts as dug in): one marker apart around the click, closer together when the trench is too short for that */
-    const n = list.length, step = n > 1 ? Math.min(gap, L / (n - 1)) : 0;
-    let s0 = b.n.s - (n - 1) * step / 2; s0 = Math.max(0, Math.min(Math.max(0, L - (n - 1) * step), s0));
-    list.forEach((u, i) => spots.set(u.id, at(q, s0 + i * step).p));
-    toTrench.push(`${plural(list.length, "unit")} to ${b.l.name}`);
-  });
+  const hex = [[0, 0]]; for (let ring = 1; hex.length < us.length; ring++) for (let i = 0; i < 6 * ring && hex.length < us.length; i++) { const a = (i / (6 * ring)) * Math.PI * 2; hex.push([Math.cos(a) * ring * gap, Math.sin(a) * ring * gap]); }
   const T = (TR[t] = TR[t] || []);
   us.forEach((u, i) => {
-    const sp = spots.get(u.id), ll = mpLL(g, sp[0], sp[1]);
+    const ll = mpLL(g, c[0] + hex[i][0], c[1] + hex[i][1]);
     const x = { id: ("p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + i).slice(0, 24), uid: u.id, name: u.name, code: MPCODES.includes(u.tcode) ? u.tcode : "INF", aff: mpAffOf(u.side), side: u.side, cab: u.cab || "", lat: ll[0], lon: ll[1], hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), lost: false };
     T.push(x); mpAg[x.id] = { name: u.name, hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng) }; mpPick.delete(u.id);
   });
   if (T.length > 200) toast("A map holds 200 troops at most: take some off first");
-  mpRG = null; render(); mpTroopSave();
-  const note = toTrench.length ? toTrench.join(", ") : us.length > 1 ? plural(us.length, "unit") + " put on the map" : "";
-  const miss = [...noTrench].map(sd => sideLbl(sd)).join(" and ");
-  if (note || miss) toast(note + (miss ? `${note ? ". " : ""}No ${miss} backline trench yet: placed where you clicked` : ""));
+  mpRG = null; render(); mpTroopSave(); if (us.length > 1) toast(plural(us.length, "unit") + " put on the map");
   return us.length;
 }
 const mpTroopPlaceAt = (lat, lon) => mpPlaceMany([...mpPickLive()], lat, lon) > 0;
