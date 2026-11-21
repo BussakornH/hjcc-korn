@@ -9,8 +9,14 @@ const MPSEA = ["GAL", "COG", "DES", "CRU", "DRD", "SUB"], MPAIR = ["FTR", "REC",
 const mpDomain = c => MPAIR.includes(c) ? "air" : MPSEA.includes(c) ? "sea" : "land";
 const mpHpCol = p => p > 66 ? "#34c759" : p > 33 ? "#ff7a45" : "#ff453a";
 const mpTroops = () => TR[S.topic] || [];
-/* A chair can hide one side's troops on the map (this screen only): null shows both, "me" or "foe" hides that side. */
-const mpHide = { t1: null, t2: null }, mpHid = (t, x) => !!mpHide[t] && x.side === mpHide[t];
+/* A chair can hide troops on the map (this screen only, nothing is saved): a whole side ("me" / "foe") and, on a topic with cabinets, any of the
+   cabinets ("_" stands for troops that belong to no cabinet). Hidden troops leave the map; they stay in the lists beside it, marked hidden. */
+const mpHide = { t1: new Set(), t2: new Set() };
+const mpCabKey = x => (x.cab && CABS().some(c => c.id === x.cab)) ? x.cab : "_";
+const mpHid = (t, x) => { const h = mpHide[t]; return !!h && h.size > 0 && (h.has("side:" + x.side) || (CABS(t).length > 0 && h.has("cab:" + mpCabKey(x)))); };
+/* units ticked in the order of battle, to be put on the map together with one click (or one drag) */
+const mpPick = new Set();
+const mpPickLive = () => { const d = D(), placed = new Set(mpTroops().map(x => x.uid)); [...mpPick].forEach(id => { const u = d.units.find(y => y.id === id); if (!u || lost(u) || placed.has(id)) mpPick.delete(id); }); return mpPick; };
 const mpTrFind = id => mpTroops().find(x => x.id === id);
 
 /* A troop and the chair's unit of the same id are one thing: HP and stats move both ways.
@@ -39,7 +45,7 @@ function mpForcesPush() {
   if (typeof ROLE === "undefined" || ROLE !== "chair") return; clearTimeout(mpFT);
   mpFT = setTimeout(() => ["t1", "t2"].forEach(t => {
     const d = S.topics[t]; if (!d) return;
-    const units = d.units.filter(u => !u.mirror && !u.remote).slice(0, 300).map(u => ({ id: u.id, name: u.name, code: u.tcode || "", cls: u.tname || "", branch: u.branch || "", side: u.side, hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), fr: u.front === "reserve" ? "reserve" : (u.front === "lost" || lost(u)) ? "lost" : "front" })), j = JSON.stringify(units);
+    const units = d.units.filter(u => !u.mirror && !u.remote).slice(0, 300).map(u => ({ id: u.id, name: u.name, code: u.tcode || "", cls: u.tname || "", branch: u.branch || "", side: u.side, cab: u.cab || "", hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), fr: u.front === "reserve" ? "reserve" : (u.front === "lost" || lost(u)) ? "lost" : "front" })), j = JSON.stringify(units);
     if (mpFSent[t] === j) return;
     /* A brand-new device (new browser, private window, cleared site data) starts with no units. Pushing that empty list would wipe the copy
        the chairs see. Only send an empty list from a device that has itself sent units for this topic before. */
@@ -61,8 +67,8 @@ function mpForcesLoad() {
         const ty = d.types.find(y => y.code === x.code), front = x.fr === "reserve" ? "reserve" : x.fr === "lost" ? "lost" : fr;
         let u = d.units.find(y => y.id === id);
         if (u && u.mirror) { delete u.mirror; u.remote = g.user; changed = true; }   /* a marker's stand-in, now that its owner's forces are in */
-        const nu = { side, name: x.name, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng, front, remote: g.user };
-        if (!u) { u = mkUnit(d, { side, t: ty, name: x.name, front, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng }); u.id = id; u.remote = g.user; u.fsv = { hp: x.hp, fr: x.fr }; d.units.push(u); changed = true; return; }
+        const nu = { side, cab: x.cab || "", name: x.name, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng, front, remote: g.user };
+        if (!u) { u = mkUnit(d, { side, t: ty, name: x.name, front, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng, cab: x.cab || "" }); u.id = id; u.remote = g.user; u.fsv = { hp: x.hp, fr: x.fr }; d.units.push(u); changed = true; return; }
         /* HP and front: this chair may override them (a battle applied, an HP edit), so the owner's copy only wins when the owner changed it since this device last looked
            (u.fsv is what it said then). Copying it back unconditionally put the old HP on the unit after every battle, and for a unit on the map mpTroopSync then sent that
            old HP to the server as if the chair had set it. A unit with a marker takes HP from the marker instead (mpTroopSync), never from here. */
@@ -140,6 +146,8 @@ function mpTroopSync() {
         else if (x[k] !== ag[k]) take();                                                                                   /* changed elsewhere: take it */
       });
       const lz = !!lost(u); if (!del && x.lost !== lz) { x.lost = lz; push = true; }
+      if (!del && !u.mirror && (x.cab || "") !== (u.cab || "")) { x.cab = u.cab || ""; push = true; }   /* the cabinet is the unit's: a troop follows it */
+      else if (u.mirror && (u.cab || "") !== (x.cab || "")) { u.cab = x.cab || ""; save(); local = true; }
       mpAg[x.id] = {}; MPF.forEach(k => { mpAg[x.id][k] = k === "name" ? u.name : num(u[k]); });
     });
   });
@@ -179,9 +187,11 @@ function mpTroopsSvg(t) {
     if (mpHid(t, x)) return "";
     const p = mpXY(g, x.lat, x.lon); if (p[0] < -20 || p[0] > g.W + 20 || p[1] < -20 || p[1] > g.H + 20) return "";
     const pc = x.maxhp > 0 ? Math.max(0, Math.min(1, x.hp / x.maxhp)) : 0, on = x.id === mpTS;
-    return `<g class="trp${on ? " on" : ""}${x.lost ? " dead" : ""}" data-a="mapTroop" data-id="${esc(x.id)}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><g class="trp-i">${on ? '<circle class="trp-r" r="34"/>' : ""}${x.id === mpPing ? '<circle class="trp-ping" r="34"/><circle class="trp-ping b" r="34"/>' : ""}<circle class="trp-hit" r="30"/><image href="symbols/${x.aff}/${x.code}.png" x="-30" y="-30" width="60" height="60"/><rect class="trp-hb" x="-19" y="20" width="38" height="4.5" rx="2.2"/><rect x="-19" y="20" width="${(38 * pc).toFixed(1)}" height="4.5" rx="2.2" style="fill:${mpHpCol(pc * 100)}"/><text class="trp-n" y="38">${esc(x.name)}</text></g></g>`;
+    return `<g class="trp${on ? " on" : ""}${x.lost ? " dead" : ""}" data-a="mapTroop" data-id="${esc(x.id)}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><g class="trp-i">${on ? '<circle class="trp-r" r="34"/>' : ""}${x.id === mpPing ? '<circle class="trp-ping" r="34"/><circle class="trp-ping b" r="34"/>' : ""}<circle class="trp-hit" r="30"/><image href="symbols/${x.aff}/${x.code}.png" x="-30" y="-30" width="60" height="60"/><rect class="trp-hb" x="-19" y="20" width="38" height="4.5" rx="2.2"/><rect x="-19" y="20" width="${(38 * pc).toFixed(1)}" height="4.5" rx="2.2" style="fill:${mpHpCol(pc * 100)}"/><text class="trp-n" y="38">${esc(x.name)}</text>${cabTag(x)}</g></g>`;
   }).join("");
 }
+/* the cabinet's short code in its colour, top left of the marker */
+const cabTag = x => { const c = x.cab && cabById(x.cab); return c ? `<g class="trp-cab" transform="translate(-30 -30)"><rect width="22" height="13" rx="3" style="fill:${esc(c.color)}"/><text x="11" y="9.6">${esc(c.code)}</text></g>` : ""; };
 const mpTroopsRedraw = () => { const e = document.getElementById("mp-troops"); if (e) e.innerHTML = mpTroopsSvg(S.topic); };
 
 /* ---------- the reach line ----------
@@ -281,34 +291,51 @@ function mpBranchOf(code, uid) {
   const d = D(), u = uid && d.units.find(y => y.id === uid), t = d.types.find(y => y.code === code);
   return (u && u.branch) || (t && t.branch) || (mpDomain(code) === "air" ? "air" : mpDomain(code) === "sea" ? "navy" : "army");
 }
+/* On a topic with cabinets the lists are grouped by cabinet (in the booklet order, "No cabinet" last), otherwise by class.
+   Inside a group units keep the class order, then their name. Order-of-battle groups get a "Select all" button, map groups a hide toggle. */
 function mpGroups(side, kind, items, codeOf, row) {
-  const d = D(), g = new Map(); items.forEach(x => { const k = mpBranchOf(codeOf(x), x.uid || x.id); if (!g.has(k)) g.set(k, []); g.get(k).push(x); });
-  const order = id => { const i = d.branches.findIndex(b => b.id === id); return i < 0 ? 99 : i; };
-  return [...g].sort((a, b) => order(a[0]) - order(b[0])).map(([k, xs]) => { const id = side + "|" + kind + "|" + k, open = mpGOpen.has(id), br = d.branches.find(b => b.id === k) || { name: "Other", color: "#6b7380" };
-    return `<div class="mp-grp${open ? " open" : ""}"><button class="mp-gh" data-a="mapGrp" data-k="${esc(id)}" aria-expanded="${open}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><i class="mp-gdot" style="background:${esc(br.color)}"></i><b>${esc(br.name)}</b><small>${xs.length}</small></button><div class="mp-gb">${xs.map(row).join("")}</div></div>`; }).join("");
+  const d = D(), cabs = CABS(), byCab = cabs.length > 0, g = new Map(), bOrd = id => { const i = d.branches.findIndex(b => b.id === id); return i < 0 ? 99 : i; };
+  items.forEach(x => { const k = byCab ? mpCabKey(x) : mpBranchOf(codeOf(x), x.uid || x.id); if (!g.has(k)) g.set(k, []); g.get(k).push(x); });
+  const order = id => { if (!byCab) return bOrd(id); const i = cabs.findIndex(c => c.id === id); return i < 0 ? 99 : i; };
+  const pick = kind === "ob" || kind === "ob-res", t = S.topic;
+  return [...g].sort((a, b) => order(a[0]) - order(b[0])).map(([k, xs]) => {
+    const id = side + "|" + kind + "|" + k, open = mpGOpen.has(id), c = byCab ? cabById(k) : null, br = byCab ? (c ? { name: c.name, color: c.color } : { name: "No cabinet", color: "#6b7380" }) : (d.branches.find(b => b.id === k) || { name: "Other", color: "#6b7380" });
+    if (byCab) xs.sort((p, q) => (bOrd(mpBranchOf(codeOf(p), p.uid || p.id)) - bOrd(mpBranchOf(codeOf(q), q.uid || q.id))) || String(p.name).localeCompare(String(q.name), undefined, { numeric: true }));
+    const allOn = pick && xs.every(u => mpPick.has(u.id)), hid = byCab && kind === "map" && mpHide[t].has("cab:" + k);
+    const extra = pick && ROLE !== "delegate" ? `<button class="mp-gx${allOn ? " on" : ""}" data-a="mapPickGrp" data-k="${esc(id)}" aria-pressed="${allOn}" aria-label="${allOn ? "Unselect" : "Select"} all ${esc(br.name)} units" title="${allOn ? "Unselect" : "Select"} every unit in this group">${ico("checks")}</button>`
+      : byCab && kind === "map" ? `<button class="mp-gx${hid ? " on" : ""}" data-a="mapHideCab" data-c="${esc(k)}" aria-pressed="${hid}" aria-label="${hid ? "Show" : "Hide"} ${esc(br.name)} troops on the map" title="${hid ? "Show" : "Hide"} ${esc(br.name)} troops on the map (your screen only)">${ico(hid ? "eyeoff" : "eye")}</button>` : "";
+    return `<div class="mp-grp${open ? " open" : ""}${hid ? " hid" : ""}" data-gk="${esc(id)}"><div class="mp-ghr"><button class="mp-gh" data-a="mapGrp" data-k="${esc(id)}" aria-expanded="${open}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><i class="mp-gdot" style="background:${esc(br.color)}"></i><b>${esc(br.name)}</b><small>${xs.length}</small></button>${extra}</div><div class="mp-gb">${xs.map(row).join("")}</div></div>`;
+  }).join("");
 }
 function mpTroopCol(t, col) {
-  const chair = ROLE !== "delegate", d = D(), side = col === "L" ? "me" : "foe", aff = mpAffOf(side), ty = mpPlace && d.units.find(x => x.id === mpPlace), nm = sideLbl(side);
+  const chair = ROLE !== "delegate", d = D(), side = col === "L" ? "me" : "foe", aff = mpAffOf(side), nm = sideLbl(side), picks = mpPickLive();
   const sel = mpTrFind(mpTS), card = sel && (col === "L") === (sel.side === "me") ? mpTroopCard() : "";
   const placed = new Set(mpTroops().map(x => x.uid)), free = d.units.filter(u => u.side === side && !lost(u) && !placed.has(u.id)), fn = id => id === "reserve" ? "Reserve" : ((d.fronts.find(f => f.id === id) || {}).name || "Front");
-  const row = u => { const rs = u.front === "reserve"; return `<div class="trt${rs ? " res" : ""}${u.id === mpPlace ? " on" : ""}" role="button" tabindex="0" data-a="mapTrType" data-id="${esc(u.id)}" title="${rs ? "In reserve. " : ""}Drag onto the map, or click and then click the map"><img src="symbols/${aff}/${esc(MPCODES.includes(u.tcode) ? u.tcode : "INF")}.png" alt="" draggable="false"><span><b>${esc(u.name)}${rs ? '<em class="trt-tag">Reserve</em>' : ""}</b><i>${rs ? "" : esc(fn(u.front)) + " · "}ATK ${fx(u.atk)} · HP ${fx(u.hp)}/${fx(u.maxhp)} · MOV ${fx(u.mov)}</i></span></div>`; };
-  const act = free.filter(u => u.front !== "reserve"), res = free.filter(u => u.front === "reserve");
+  const row = u => { const rs = u.front === "reserve", on = picks.has(u.id); return `<div class="trt${rs ? " res" : ""}${on ? " on" : ""}" id="trt-${esc(u.id)}" role="checkbox" aria-checked="${on}" tabindex="0" data-a="mapTrType" data-id="${esc(u.id)}" title="${rs ? "In reserve. " : ""}Click to select (several at once), then click the map. Or drag it onto the map."><span class="trt-ck" aria-hidden="true"></span><img src="symbols/${aff}/${esc(MPCODES.includes(u.tcode) ? u.tcode : "INF")}.png" alt="" draggable="false"><span><b>${esc(u.name)}${rs ? '<em class="trt-tag">Reserve</em>' : ""}</b><i>${rs ? "" : esc(fn(u.front)) + " · "}ATK ${fx(u.atk)} · HP ${fx(u.hp)}/${fx(u.maxhp)} · MOV ${fx(u.mov)}</i></span></div>`; };
+  const act = free.filter(u => u.front !== "reserve"), res = free.filter(u => u.front === "reserve"), mine = free.filter(u => picks.has(u.id)).length;
   const sect = (cls, label, n, body) => `<div class="mp-ob ${cls}"><div class="mp-ob-h"><b>${label}</b><small>${n}</small></div>${body}</div>`;
-  const kinds = chair ? `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 8px"><div><h3>${esc(nm)}</h3><p>${ty && ty.side === side ? `Click the map to put down ${esc(ty.name)}. Esc to stop.` : "Order of battle: drag a unit onto the map"}</p></div></div><div class="trt-g">${free.length ? sect("act", "Active", act.length, act.length ? mpGroups(side, "ob", act, u => u.tcode, row) : '<p class="muted" style="margin:4px 0 8px">No active units off the map.</p>') + (res.length ? sect("res", "Reserve", res.length, mpGroups(side, "ob-res", res, u => u.tcode, row)) : "") : '<p class="muted" style="margin:8px 0 0">Every unit on this side is on the map. Add more on the Order of Battle page.</p>'}</div></section>` : "";
+  const hint = picks.size ? `<b>${plural(picks.size, "unit")} selected${mine !== picks.size ? ` (${mine} here)` : ""}.</b> Click the map to put ${picks.size > 1 ? "them" : "it"} down. Esc to stop.` : "Order of battle: click units to select one or several, then click the map. Or drag one.";
+  const kinds = chair ? `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 8px"><div><h3>${esc(nm)}</h3><p>${hint}</p></div>${mine ? `<button class="btn sm" data-a="mapPickClear" data-s="${side}">Clear</button>` : ""}</div><div class="trt-g">${free.length ? sect("act", "Active", act.length, act.length ? mpGroups(side, "ob", act, u => u.tcode, row) : '<p class="muted" style="margin:4px 0 8px">No active units off the map.</p>') + (res.length ? sect("res", "Reserve", res.length, mpGroups(side, "ob-res", res, u => u.tcode, row)) : "") : '<p class="muted" style="margin:8px 0 0">Every unit on this side is on the map. Add more on the Order of Battle page.</p>'}</div></section>` : "";
   const on = mpTroops().filter(x => x.side === side).sort((a, b) => a.name.localeCompare(b.name));
-  const list = `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 6px"><div><h3>${chair ? "On the map" : esc(nm)}</h3><p>${on.length ? plural(on.length, "troop") + (chair ? "" : " on the map") : "No troops placed yet"}</p></div></div>${mpGroups(side, "map", on, x => x.code, x => { const pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0; return `<button class="trl-row${x.id === mpTS ? " on" : ""}${x.lost ? " dead" : ""}" data-a="mapTroop" data-id="${esc(x.id)}"><img src="symbols/${x.aff}/${esc(x.code)}.png" alt=""><span><b>${esc(x.name)}</b><em><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></em></span><small>${fx(x.hp)}/${fx(x.maxhp)}</small></button>`; })}</section>`;
+  const hidN = on.filter(x => mpHid(t, x)).length;
+  const list = `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 6px"><div><h3>${chair ? "On the map" : esc(nm)}</h3><p>${on.length ? plural(on.length, "troop") + (chair ? "" : " on the map") + (hidN ? ` · ${hidN} hidden` : "") : "No troops placed yet"}</p></div></div>${mpGroups(side, "map", on, x => x.code, x => { const pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0, h = mpHid(t, x); return `<button class="trl-row${x.id === mpTS ? " on" : ""}${x.lost ? " dead" : ""}${h ? " hid" : ""}" data-a="mapTroop" data-id="${esc(x.id)}"${h ? ' title="Hidden on the map"' : ""}><img src="symbols/${x.aff}/${esc(x.code)}.png" alt=""><span><b>${esc(x.name)}</b><em><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></em></span><small>${fx(x.hp)}/${fx(x.maxhp)}</small></button>`; })}</section>`;
   return card + kinds + list;
 }
 const MPCODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "XBW", "HOB", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF", "MP", "ARM", "SAP", "BAT"];
 
 Object.assign(MAPA, {
-  mapTroop: el => { mpPlace = null;   /* a unit picked from the list for placing used to swallow every click on a marker; clicking a marker now just stops the placing */
+  mapTroop: el => { mpPick.clear();   /* a unit picked from the list for placing used to swallow every click on a marker; clicking a marker now just stops the placing */
     mpTS = el.dataset.id === mpTS ? null : el.dataset.id; mpRG = null;
     const x = mpTS && mpTrFind(mpTS);
     if (x && MPV && el.closest(".mp-tl")) { const p = mpXY(mpGeo(S.topic), x.lat, x.lon), m = 0; if (p[0] < MPV.x + m || p[0] > MPV.x + MPV.w - m || p[1] < MPV.y + m || p[1] > MPV.y + MPV.h - m) { MPV.x = p[0] - MPV.w / 2; MPV.y = p[1] - MPV.h / 2; mpClampView(); } }   /* a troop out of sight comes into view */
     render(); },
   mapGrp: el => { const k = el.dataset.k, g = el.closest(".mp-grp"), o = !mpGOpen.has(k); o ? mpGOpen.add(k) : mpGOpen.delete(k); if (g) g.classList.toggle("open", o); el.setAttribute("aria-expanded", o); },
-  mapTrType: el => { mpPlace = mpPlace === el.dataset.id ? null : el.dataset.id; mpTS = null; render(); },
+  mapTrType: el => { const id = el.dataset.id; mpPick.has(id) ? mpPick.delete(id) : mpPick.add(id); mpTS = null; render(); },
+  mapPickGrp: el => { const g = el.closest(".mp-grp"), ids = g ? [...g.querySelectorAll(".trt[data-id]")].map(x => x.dataset.id) : [], all = ids.every(id => mpPick.has(id)); ids.forEach(id => all ? mpPick.delete(id) : mpPick.add(id)); if (g && !all) mpGOpen.add(el.dataset.k); render(); },
+  mapPickClear: el => { const sd = el.dataset.s, d = D(); [...mpPick].forEach(id => { const u = d.units.find(y => y.id === id); if (!sd || !u || u.side === sd) mpPick.delete(id); }); render(); },
+  mapHideCab: el => { const h = mpHide[S.topic], k = "cab:" + el.dataset.c; h.has(k) ? h.delete(k) : h.add(k); const x = mpTrFind(mpTS); if (x && mpHid(S.topic, x)) { mpTS = null; mpRG = null; } render(); },
+  mapHideSide: el => { const h = mpHide[S.topic], k = "side:" + el.dataset.s; h.has(k) ? h.delete(k) : h.add(k); const x = mpTrFind(mpTS); if (x && mpHid(S.topic, x)) { mpTS = null; mpRG = null; } render(); },
+  mapHideAll: el => { const h = mpHide[S.topic]; h.clear(); if (el.dataset.v === "hide") { CABS().forEach(c => h.add("cab:" + c.id)); h.add("cab:_"); } const x = mpTrFind(mpTS); if (x && mpHid(S.topic, x)) { mpTS = null; mpRG = null; } render(); },
   mapTrDel: () => { const t = S.topic; TR[t] = mpTroops().filter(x => x.id !== mpTS); mpTS = null; render(); mpTroopSave(); },
   mapTrAff: el => { const x = mpTrFind(mpTS); if (!x) return; x.aff = el.dataset.f; render(); mpTroopSave(); },
   mapTrHp: el => {   /* the chairs' forces are view-only elsewhere, but the troops on their map are theirs to hurt or heal */
@@ -340,12 +367,31 @@ function mpPinpoint(x) {
   mpFlyTo(p[0], p[1], Math.min(MPV.w, fit.w / 3));
   mpPing = x.id; clearTimeout(mpPingT); mpPingT = setTimeout(() => { mpPing = null; }, 2800); mpTroopsRedraw();
 }
-/* put a new troop down where the map was clicked: a unit joins the chair's forces (so the combat calculator can use it) and a marker goes on the map */
-function mpTroopPlaceAt(lat, lon) {
-  const d = D(), u = mpPlace && d.units.find(y => y.id === mpPlace); if (!u || mpTroops().some(x => x.uid === u.id)) return false;
-  const x = { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), uid: u.id, name: u.name, code: MPCODES.includes(u.tcode) ? u.tcode : "INF", aff: mpAffOf(u.side), side: u.side, lat, lon, hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), lost: false };
-  (TR[S.topic] = TR[S.topic] || []).push(x); mpAg[x.id] = { name: u.name, hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng) }; mpRG = null; render(); mpTroopSave(); return true;
+/* put the selected units down where the map was clicked: each unit already in the chair's forces gets a marker (so the combat calculator can still use it).
+   Several go down in a tight honeycomb around the point, one marker apart at the current zoom, so none hides another. */
+function mpPlaceMany(ids, lat, lon) {
+  const d = D(), have = new Set(mpTroops().map(x => x.uid)), us = ids.map(id => d.units.find(y => y.id === id)).filter(u => u && !lost(u) && !have.has(u.id));
+  if (!us.length) return 0;
+  const g = mpGeo(S.topic), c = mpXY(g, lat, lon), svg = document.querySelector(".mapsvg"), k = svg ? num(svg.style.getPropertyValue("--k"), 0) || (MPV ? MPV.w / Math.max(1, svg.getBoundingClientRect().width) : 1) : 1, gap = 50 * k;
+  const spots = [[0, 0]]; for (let ring = 1; spots.length < us.length; ring++) for (let i = 0; i < 6 * ring && spots.length < us.length; i++) { const a = (i / (6 * ring)) * Math.PI * 2; spots.push([Math.cos(a) * ring * gap, Math.sin(a) * ring * gap]); }
+  const T = (TR[S.topic] = TR[S.topic] || []);
+  us.forEach((u, i) => {
+    const ll = mpLL(g, c[0] + spots[i][0], c[1] + spots[i][1]);
+    const x = { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + i, uid: u.id, name: u.name, code: MPCODES.includes(u.tcode) ? u.tcode : "INF", aff: mpAffOf(u.side), side: u.side, cab: u.cab || "", lat: ll[0], lon: ll[1], hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), lost: false };
+    x.id = x.id.slice(0, 24); T.push(x); mpAg[x.id] = { name: u.name, hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng) }; mpPick.delete(u.id);
+  });
+  if (T.length > 200) toast("A map holds 200 troops at most: take some off first");
+  mpRG = null; render(); mpTroopSave(); if (us.length > 1) toast(plural(us.length, "unit") + " put on the map"); return us.length;
 }
+const mpTroopPlaceAt = (lat, lon) => mpPlaceMany([...mpPickLive()], lat, lon) > 0;
+
+/* with units selected, a click anywhere on the map puts them down: on the sea, on land, on a country or city name (only the sea used to take the click) */
+document.addEventListener("click", e => {
+  if (!mpPick.size || e.defaultPrevented || ROLE === "delegate" || e.button) return;   /* defaultPrevented: the end of a pan or drag, not a click */
+  const svg = e.target.closest && e.target.closest(".mapsvg"); if (!svg || e.target.closest(".trp")) return;
+  const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(svg.getScreenCTM().inverse()), ll = mpLL(mpGeo(S.topic), q.x, q.y);
+  e.stopPropagation(); e.preventDefault(); mpTroopPlaceAt(ll[0], ll[1]);
+}, true);
 
 /* drag a kind of troop from the list onto the map */
 (function () {
@@ -355,13 +401,13 @@ function mpTroopPlaceAt(lat, lon) {
   });
   document.addEventListener("pointermove", e => {
     const d = mpLDrag; if (!d) return; if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
-    if (!d.moved) { d.moved = true; mpDragged = true; d.ghost = document.createElement("img"); d.ghost.src = d.src.querySelector("img").src; d.ghost.className = "trt-ghost"; document.body.appendChild(d.ghost); document.body.classList.add("trt-dragging"); }
+    if (!d.moved) { d.moved = true; mpDragged = true; d.ghost = document.createElement("div"); d.ghost.className = "trt-ghost"; d.ghost.innerHTML = `<img src="${d.src.querySelector("img").src}" alt="">${mpPick.has(d.id) && mpPick.size > 1 ? `<b>${mpPick.size}</b>` : ""}`; document.body.appendChild(d.ghost); document.body.classList.add("trt-dragging"); }
     d.ghost.style.transform = `translate(${e.clientX - 40}px, ${e.clientY - 40}px)`; e.preventDefault();
   });
   const end = e => {
     const d = mpLDrag; if (!d) return; mpLDrag = null; if (!d.moved) return;
     d.ghost.remove(); document.body.classList.remove("trt-dragging"); const under = document.elementFromPoint(e.clientX, e.clientY), svg = under && under.closest && under.closest(".mapsvg");
-    if (svg) { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(svg.getScreenCTM().inverse()), ll = mpLL(mpGeo(S.topic), q.x, q.y); mpPlace = d.id; mpTroopPlaceAt(ll[0], ll[1]); mpPlace = null; render(); }
+    if (svg) { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(svg.getScreenCTM().inverse()), ll = mpLL(mpGeo(S.topic), q.x, q.y); mpPlaceMany(mpPick.has(d.id) ? [...mpPickLive()] : [d.id], ll[0], ll[1]); }   /* a ticked unit takes the whole selection with it */
   };
   document.addEventListener("pointerup", end); document.addEventListener("pointercancel", end);
 })();
@@ -383,7 +429,10 @@ function mpTroopPlaceAt(lat, lon) {
   });
   const endDrag = () => { const d = mpTDrag; mpPressed = 0; if (!d) return; mpTDrag = null; if (d.moved) { mpRG = null; mpTS = d.id; render(); mpTroopSave(); } };
   document.addEventListener("pointerup", endDrag); document.addEventListener("pointercancel", endDrag); window.addEventListener("blur", endDrag);
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && mpPlace) { mpPlace = null; if (typeof UI !== "undefined" && UI.page === "map") render(); } });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && mpPick.size && !document.querySelector("#modal.on")) { mpPick.clear(); if (typeof UI !== "undefined" && UI.page === "map") render(); }
+    const r = e.target.closest && e.target.closest(".trt[data-id]"); if (r && (e.key === " " || e.key === "Enter")) { e.preventDefault(); MAPA.mapTrType(r); }   /* the order of battle rows are checkboxes for the keyboard too */
+  });
 })();
 /* the troops list and this device's forces stay in step while you are on any page */
 setInterval(() => { if (typeof ROLE !== "undefined" && ROLE !== "admin" && mpTLoaded && !document.hidden && !mpTDrag) mpTroopsLoad(); }, 10000);

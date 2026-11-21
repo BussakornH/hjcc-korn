@@ -752,7 +752,7 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .mp-wrap { display: flex; flex-direction: column; gap: 12px; } .mp-board { align-self: stretch; }
 .mp-stage { position: relative; }
 /* troop lists sit in the free space left and right of the map; the map is as big as the window allows (16:9, never taller than the screen) */
-.mp-main { display: grid; grid-template-columns: minmax(190px, 1fr) minmax(0, max(640px, calc((100vh - 296px) * 16 / 9))) minmax(190px, 1fr); gap: 12px; justify-content: center; align-items: stretch; }
+.mp-main { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, max(640px, calc((100vh - 296px) * 16 / 9))) minmax(220px, 1fr); gap: 12px; justify-content: center; align-items: stretch; }
 .mp-board { align-self: start; }
 .mp-tl { position: relative; min-width: 0; } .mp-tl-in { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
 /* the toolbar above the map: one quiet card. Tools on top, what the tool does under it, the battle lines last. No bands, hairlines only between sections. */
@@ -930,3 +930,41 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .pt-rh { cursor: ew-resize; transform: scale(var(--k, 1)); } .pt-rhit { fill: transparent; pointer-events: all; } .pt-rd { fill: #fff; stroke: rgba(0, 0, 0, .35); stroke-width: 1.5; vector-effect: non-scaling-stroke; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .45)); }
 .pt-n { text-anchor: middle; font-size: 11px; font-weight: 700; fill: #fff; paint-order: stroke; stroke: rgba(0, 0, 0, .7); stroke-width: 3px; pointer-events: none; }
 .k-pt { width: 10px; height: 10px; border-radius: 50%; border: 2px dashed; } .k-pt.weak { border-color: #ff5a46; background: rgba(255, 90, 70, .3); } .k-pt.fort { border-color: #3fbf78; background: rgba(70, 190, 120, .3); }
+
+/* ---------- cabinets, hiding and multi-select on the battle map ---------- */
+.vh-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.cab-dot { display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; vertical-align: 0; }
+.mp-hb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 7px 10px; border-bottom: 1px solid rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .8); }
+.mp-hb-k { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: rgba(255, 255, 255, .55); }
+.mp-hb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.mp-hb-row .mp-sep { width: 1px; height: 20px; background: rgba(255, 255, 255, .18); margin: 0 2px; }
+.mp-hb-act { display: flex; gap: 4px; margin-left: auto; }
+.mp-hb-act .btn.plain { color: rgba(255, 255, 255, .85); }
+.mp-hb-act .btn.plain:disabled { color: rgba(255, 255, 255, .35); }
+.hb-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 2px 9px; border: 1px solid rgba(255, 255, 255, .22); border-radius: 999px; background: rgba(255, 255, 255, .08); color: #fff; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.hb-chip:hover { border-color: rgba(255, 255, 255, .5); }
+.hb-chip:focus-visible, .mp-gx:focus-visible, .trt:focus-visible { outline: 2px solid var(--accent, #2997ff); outline-offset: 2px; }
+.hb-chip i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.hb-chip b { font-weight: 600; } .hb-chip small { color: rgba(255, 255, 255, .6); font-size: 11px; }
+.hb-chip.off { background: transparent; border-style: dashed; color: rgba(255, 255, 255, .5); }
+.hb-chip.off i { opacity: .35; } .hb-chip.off b { text-decoration: line-through; }
+.mp-pickbar { position: absolute; z-index: 2; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; max-width: calc(100% - 20px); padding: 6px 6px 6px 14px; border-radius: 999px; background: rgba(4, 12, 28, .92); border: 1px solid rgba(255, 255, 255, .25); color: #fff; font-size: var(--fs-sm); box-shadow: 0 6px 20px rgba(0, 0, 0, .35); }
+.mp-pickbar b, .mp-pickbar span { white-space: nowrap; } .mp-pickbar span { color: rgba(255, 255, 255, .7); }
+@media (max-width: 560px) { .mp-pickbar span { display: none; } }
+.mp-ghr { display: flex; gap: 4px; align-items: stretch; }
+.mp-ghr .mp-gh { flex: 1; min-width: 0; }
+.mp-gx { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 34px; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink-2); font: inherit; font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
+.mp-gx .ic { width: 16px; height: 16px; } .mp-gx:hover { border-color: var(--ink-3); color: var(--ink); } .mp-gx.on { background: var(--panel-3); color: var(--accent); }
+.mp-ghr .mp-gh { padding: 8px; gap: 6px; }
+.mp-grp.hid > .mp-ghr .mp-gh { opacity: .6; } .trl-row.hid { opacity: .5; } .trl-row.hid b { font-style: italic; }
+.trt { position: relative; cursor: pointer; }
+.trt-ck { flex: none; width: 18px; height: 18px; margin-left: 4px; border: 1.5px solid var(--ink-3); border-radius: 5px; background: var(--panel); }
+.trt.on { outline: 2px solid var(--accent, #2997ff); outline-offset: -1px; background: var(--me-soft); }
+.trt.on .trt-ck { border-color: var(--accent, #2997ff); background: var(--accent, #2997ff) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat; }
+.trt-ghost img { width: 100%; height: 100%; }
+.trt-ghost b { position: absolute; top: 2px; right: 2px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; background: var(--accent, #2997ff); color: #fff; font: 700 13px/24px "IBM Plex Sans", sans-serif; text-align: center; }
+.trp-cab rect { stroke: rgba(4, 12, 28, .85); stroke-width: 1px; } .trp-cab text { fill: #fff; font: 700 9px "IBM Plex Sans", sans-serif; text-anchor: middle; paint-order: stroke; stroke: rgba(4, 12, 28, .6); stroke-width: 2px; }
+.bk-wrap { max-height: 56vh; overflow: auto; margin: 4px 0 12px; }
+.bk-t td, .bk-t th { vertical-align: middle; } .bk-t .bk-n { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; } .bk-t .bk-n .muted { font-size: 11px; margin-left: 4px; }
+.bk-t input[type=checkbox] { width: 18px; height: 18px; }
+.mp-tl .mp-card { padding: 14px 12px; }

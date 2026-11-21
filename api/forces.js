@@ -7,7 +7,7 @@ const CHARS = require("./_chars");
                                a chair's entry has side null and each unit carries its own side; an entry left by a former delegate account has the side
                                of that delegate's character today ("me", "foe" or "ne")
    POST { topic, units }    -> replace the signed-in chair's units for the topic     (chair)
-   unit: { id, name, code, cls, branch, side, hp, maxhp, atk, mov, rng, fr } (side: "me" | "foe" | "ne"; fr: "reserve" | "front" | "lost") */
+   unit: { id, name, code, cls, branch, side, cab, hp, maxhp, atk, mov, rng, fr } (side: "me" | "foe" | "ne"; fr: "reserve" | "front" | "lost") */
 const TOPIC = ["t1", "t2"], MAX = 300;
 const n = (v, hi) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(0, Math.round(v * 100) / 100)) : null; };
 const id = (v, k) => String(v || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, k);
@@ -18,7 +18,7 @@ const clean = (v) => {
     const uid = id(x && x.id, 24), name = String((x && x.name) || "").trim().slice(0, 50), hp = n(x && x.hp, 100000), maxhp = n(x && x.maxhp, 100000);
     if (!uid || seen.has(uid) || !name || hp === null || maxhp === null) return null;
     seen.add(uid);
-    out.push({ id: uid, name, code: id(x.code, 8), cls: String(x.cls || "").slice(0, 40), branch: id(x.branch, 24), side: x.side === "foe" || x.side === "ne" ? x.side : "me", hp, maxhp, atk: n(x.atk, 1000) || 0, mov: n(x.mov, 1000) || 0, rng: n(x.rng, 1000) || 0, fr: x.fr === "reserve" || x.fr === "lost" ? x.fr : "front" });
+    out.push({ id: uid, name, code: id(x.code, 8), cls: String(x.cls || "").slice(0, 40), branch: id(x.branch, 24), side: x.side === "foe" || x.side === "ne" ? x.side : "me", cab: String(x.cab || "").replace(/[^a-z]/g, "").slice(0, 8), hp, maxhp, atk: n(x.atk, 1000) || 0, mov: n(x.mov, 1000) || 0, rng: n(x.rng, 1000) || 0, fr: x.fr === "reserve" || x.fr === "lost" ? x.fr : "front" });
   }
   return out;
 };

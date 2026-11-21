@@ -49,6 +49,17 @@ The first time, a chair's device hands in the rules it already has; resetting a 
 A unit's attack, movement and range stop at 1000 and its HP at 100000, here and on the server.
 When a session ends (12 hours, or a password reset) the next thing the page asks the server for sends that tab back to sign-in.
 
+## Cabinets (Topic 2)
+Topic 2 has nine cabinets: Spain, Germany, Austria-Hungary, Ottoman, USA, France, Britain, Russia and the Netherlands (`presets.js`, `cabinets`).
+Each has its order of battle from its Military Resources Booklet (`booklets`, keyed by cabinet); "Load booklet forces" loads the ticked cabinets
+in Reserve, leaves out units the booklet lists as Not Found, and never adds a unit a cabinet already has. A unit's cabinet (`cab`) travels with it
+to the other chairs and onto the map, where its troops carry the cabinet's tag. On the battle map a chair can hide either side or any cabinet
+(this screen only) and select several units to put down with one click.
+
+## Rendering
+`render()` builds each page as a string but puts it on screen with a small DOM diff (`domMorph` in `app.js`): only nodes that changed are touched,
+and the battle map's base layer is built once and kept. Rebuilding everything on each 10 to 15 second refresh re-created every troop image and made the map flash.
+
 ## Editing at the same time
 Shared state (troops on the map, sides by day, city sides) is written so that two people editing at once do not erase each other.
 Two chairs saving the troop list from the same starting point

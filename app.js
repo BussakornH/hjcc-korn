@@ -16,6 +16,12 @@ const atLeast = r => RANK[ROLE] >= RANK[r];
 const deny = () => toast("Only the Admin can do that.");
 /* a unit another chair keeps (copied from the server): HP, front and battles can change here, everything else only on its owner's screen */
 const foreign = u => !!(u && u.remote);
+/* the cabinets (countries) of a topic, from presets.js: Topic 2 has nine, each with its own booklet. A unit may belong to one (u.cab). */
+const CABS = (t) => TOPICS[t || S.topic].cabinets || [];
+const cabById = (id, t) => CABS(t).find(c => c.id === id) || null;
+const cabName = id => { const c = cabById(id); return c ? c.name : ""; };
+const cabOpts = sel => `<option value="" ${sel ? "" : "selected"}>No cabinet</option>` + CABS().map(c => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}</option>`).join("");
+const cabDot = id => { const c = cabById(id); return c ? `<i class="cab-dot" style="background:${esc(c.color)}" title="${esc(c.full)}"></i>` : ""; };
 const denyForeign = u => toast(`${u.name} belongs to ${u.remote}: only they can change that.`);
 document.documentElement.dataset.role = ROLE;
 /* forces are kept per sign-in, so two people on one browser never see each other's units */
@@ -73,6 +79,10 @@ const IC = {
   dots: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
   copy: '<rect x="8" y="8" width="12" height="12" rx="1.5"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/>'
 };
+/* icons for the battle map's hide and select toggles */
+IC.eye = '<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>';
+IC.eyeoff = '<path d="M3 3l18 18M10.6 5.6A10 10 0 0 1 12 5.5C18.4 5.5 22 12 22 12a17 17 0 0 1-3.2 3.9M6.6 6.7C3.7 8.5 2 12 2 12s3.6 6.5 10 6.5a9.6 9.6 0 0 0 4.2-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>';
+IC.checks = '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 12.5l3 3 5-6"/>';
 const ico = k => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${IC[k] || ""}</svg>`;
 
 /* ======================= STATE ======================= */
@@ -217,7 +227,7 @@ function mkUnit(d, o) {
     id: uid("u"), side: o.side, name: o.name, type: t ? t.id : "", tcode: t ? t.code : "", tname: t ? t.name : "Custom unit",
     branch: t ? t.branch : (o.branch || d.branches[0].id),
     hp: num(o.hp, t ? t.hp : 1), maxhp: num(o.maxhp, t ? t.hp : 1), atk: num(o.atk, t ? t.atk : 0), mov: num(o.mov, t ? t.mov : 0), rng: num(o.rng, t ? t.rng : 0),
-    front: o.front || "reserve", ord: 1 + Math.max(0, ...d.units.filter(x => x.front === (o.front || "reserve")).map(x => num(x.ord))), notes: ""
+    front: o.front || "reserve", ord: 1 + Math.max(0, ...d.units.filter(x => x.front === (o.front || "reserve")).map(x => num(x.ord))), notes: o.notes || "", cab: o.cab || ""
   };
 }
 function nextNum(d, base) { const re = new RegExp("^" + reEsc(base) + " (\\d+)$"); let m = 0; d.units.forEach(u => { const x = re.exec(u.name); if (x) m = Math.max(m, +x[1]); }); return m + 1; }
@@ -556,6 +566,47 @@ function pgControl() {
     <div class="data-btns"><button class="btn danger" data-a="cpReset" data-s="t1">Reset ${esc(TOPICS.t1.title)}</button><button class="btn danger" data-a="cpReset" data-s="t2">Reset ${esc(TOPICS.t2.title)}</button><button class="btn danger" data-a="cpReset" data-s="all">Reset everything</button></div></section>` + accessPanel();
 }
 
+/* Put a freshly built page in place by changing only what differs from what is on screen. Rebuilding the whole page on every refresh
+   (the map and the shared lists reload every 10 to 15 seconds) re-created every image and chart, which made the screen flash and lag.
+   Nodes that are equal stay as they are (with their focus, scroll and loaded images); form fields that differ are replaced outright. */
+const MORPH_SWAP = /^(INPUT|SELECT|TEXTAREA|OPTION|IMG|image|CANVAS|VIDEO|IFRAME)$/;
+const isMap = n => n.nodeType === 1 && n.classList.contains("mapsvg");
+/* two nodes that may stand for each other: equal, or the live map and its new build (the live one is kept and brought up to date) */
+const domSame = (p, q) => p.isEqualNode(q) || (isMap(p) && isMap(q) && p.dataset.t === q.dataset.t);
+function domMorphKids(a, b) {
+  const A = [...a.childNodes], B = [...b.childNodes];
+  if (A.length !== B.length) {
+    /* lists that grew or shrank: keep the leading and trailing nodes that are still the same, replace the middle */
+    const nA = A.length, nB = B.length; let i = 0, j = 0;
+    while (i < nA && i < nB && domSame(A[i], B[i])) i++;
+    while (j < nA - i && j < nB - i && domSame(A[nA - 1 - j], B[nB - 1 - j])) j++;
+    for (let k = 0; k < i; k++) domMorph(A[k], B[k]);
+    for (let k = 0; k < j; k++) domMorph(A[nA - 1 - k], B[nB - 1 - k]);
+    const ref = A[nA - j] || null; for (let k = nA - j - 1; k >= i; k--) a.removeChild(A[k]);
+    for (let k = i; k < nB - j; k++) a.insertBefore(B[k], ref);
+    return;
+  }
+  for (let k = 0; k < B.length; k++) domMorph(A[k], B[k]);
+}
+function domMorph(x, y) {
+  if (x.isEqualNode(y)) return;
+  if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { x.replaceWith(y); return; }
+  if (x.nodeType === 3 || x.nodeType === 8) { x.nodeValue = y.nodeValue; return; }
+  if (x.nodeType !== 1) { x.replaceWith(y); return; }
+  if (x.classList.contains("mapsvg")) { if (x.dataset.t === y.dataset.t && typeof mpSyncSvg === "function") mpSyncSvg(x, y); else x.replaceWith(y); return; }
+  if (MORPH_SWAP.test(x.nodeName) || x.hasAttribute("data-chart") || x.id === "page") { x.replaceWith(y); return; }
+  for (const at of [...x.attributes]) if (!y.hasAttribute(at.name)) x.removeAttribute(at.name);
+  for (const at of [...y.attributes]) if (x.getAttribute(at.name) !== at.value) x.setAttribute(at.name, at.value);
+  domMorphKids(x, y);
+}
+function pagePut(html) {
+  const host = $("page"), tpl = document.createElement("template"); tpl.innerHTML = html;
+  if (!host.firstChild) { host.replaceChildren(tpl.content); return; }
+  domMorphKids(host, tpl.content);
+  const svg = host.querySelector(".mapsvg");
+  if (svg && svg.dataset.base !== "1" && typeof mpBase === "function") { svg.insertAdjacentHTML("afterbegin", mpBase(svg.dataset.t)); svg.dataset.base = "1"; }   /* never leave a map without its land and sea */
+  if (svg && typeof mpLabels === "function") mpLabels(svg);
+}
 let renderWait = false;
 function render() {
   if (dragging()) {   /* never redraw under a card being dragged; catch up as soon as it is dropped */
@@ -569,8 +620,8 @@ function render() {
   const keep = {}; document.querySelectorAll("[data-keep]").forEach(el => { keep[el.dataset.keep] = [el.scrollLeft, el.scrollTop]; });
   chrome();
   const P = { map: pgMap, status: pgStatus, control: pgControl, sides: pgSides, overview: pgOverview, forces: pgForces, board: pgBoard, roster: pgRoster, combat: pgCombat, rules: pgRules, morale: pgMorale, settings: pgSettings }[UI.page] || pgOverview;
-  const html = P(), live = UI.page === "map" ? document.querySelector("#page .mapsvg") : null;
-  if (!(live && live.isConnected && mpKeepMap(live, html))) $("page").innerHTML = html;
+  const pg = UI.page + "|" + S.topic; if ($("page").dataset.pg !== pg) { $("page").replaceChildren(); $("page").dataset.pg = pg; }   /* a new page starts clean */
+  pagePut(P());
   lockPage();
   if (DEL && MINE && MINE[S.topic] && MINE[S.topic].side === "ne") $("page").insertAdjacentHTML("afterbegin", `<div class="lockbar" role="note"><b>Neutral today.</b> You have no force on Day ${MINE[S.topic].day}. The chairs decide when you join a side.</div>`);
   renderDrawer();
@@ -834,7 +885,7 @@ function pgForces() {
         <div class="mf-add"><button class="btn sm" data-a="subAdd" data-b="${b.id}">${ico("plus")} Add sub class to ${esc(b.name)}</button></div>
       </div></section>`;
   }).join("");
-  return head(ROLE === "chair" ? "Forces" : "My forces", "Each side's forces by class and sub class: how many units are left, at what strength and HP. Each row shows where its units are. Open a sub class to see and adjust each unit; add sub classes as the chairs announce them. All sub class stats are placeholders until the chairs' booklet arrives.",
+  return head(ROLE === "chair" ? "Forces" : "My forces", `Each side's forces by class and sub class: how many units are left, at what strength and HP. Each row shows where its units are. Open a sub class to see and adjust each unit; add sub classes as the chairs announce them. ${bookletFor() ? "Sub class stats come from the chairs' Military Resources Booklet." : "All sub class stats are placeholders until the chairs' booklet arrives."}`,
     seg("rosterSide", [["me", sideLbl("me")], ["foe", sideLbl("foe")]], fs, "s") + `<button class="btn sm" data-a="mfAll" data-v="0">Collapse all</button><button class="btn sm" data-a="mfAll" data-v="1">Expand all</button><button class="btn sm primary" data-a="addUnits" data-s="${fs}">${ico("plus")} Add units</button>`) + sumHtml + cls;
 }
 function subBlock(t, units, b) {
@@ -861,7 +912,7 @@ function openSub(branchId, typeId) {
   const d = D(), t = typeId ? d.types.find(x => x.id === typeId) : null; if (typeId && !t) return;
   const b = t ? t.branch : (branchId || d.branches[0].id), n = t ? d.units.filter(u => u.type === t.id).length : 0;
   const nf = (id, l, v, min) => `<div class="fld"><label for="${id}">${l}</label><input id="${id}" type="number" min="${min}" step="0.5" value="${fx(v)}"></div>`;
-  openModal(`<h2>${t ? `Edit sub class: ${esc(t.name)}` : `Add a sub class to ${esc(branchById(b).name)}`}</h2><p class="muted">A sub class is a kind of unit inside a class, for example Light Infantry in the Army. Its stats fill in new units and are placeholders until the chairs' booklet arrives.</p>
+  openModal(`<h2>${t ? `Edit sub class: ${esc(t.name)}` : `Add a sub class to ${esc(branchById(b).name)}`}</h2><p class="muted">A sub class is a kind of unit inside a class, for example Light Infantry in the Army. Its stats fill in new units${bookletFor() ? " (from the chairs' booklet)" : " and are placeholders until the chairs' booklet arrives"}.</p>
     <div class="fgrid">
       <div class="fld span2"><label for="sbName">Name</label><input id="sbName" value="${esc(t ? t.name : "")}" maxlength="40" placeholder="e.g. Mechanized Infantry"></div>
       <div class="fld"><label for="sbCode">Short code</label><input id="sbCode" value="${esc(t ? t.code : "")}" maxlength="8" placeholder="Automatic"></div>
@@ -888,7 +939,8 @@ function submitSub(id) {
 /* ---------- ORDER OF BATTLE: drag-and-drop board ---------- */
 function pgBoard() {
   const d = D(), side = DEL ? "me" : ROLE === "chair" && !UI.bs ? "both" : UI.boardSide, q = UI.q.trim().toLowerCase();
-  const vis = u => (side === "both" || u.side === side) && (!UI.br || u.branch === UI.br) && (!q || `${u.name} ${u.tname} ${u.tcode}`.toLowerCase().includes(q));
+  const cf = CABS().length && (UI.cabF === "_" || cabById(UI.cabF)) ? UI.cabF : "";
+  const vis = u => (side === "both" || u.side === side) && (!UI.br || u.branch === UI.br) && (!cf || (cf === "_" ? !cabById(u.cab) : u.cab === cf)) && (!q || `${u.name} ${u.tname} ${u.tcode} ${cabName(u.cab)}`.toLowerCase().includes(q));
   const mk = (f, i, sd) => {
     const U = d.units.filter(u => u.front === f.id && vis(u) && (!sd || u.side === sd)).sort(byOrd), live = U.filter(u => !lost(u));
     const st = f.id === "lost" ? plural(U.length, "unit") : `${plural(live.length, "unit")} · HP ${fx(sum(live.map(u => u.hp)))}/${fx(sum(live.map(u => u.maxhp)))} · ATK ${fx(sum(live.map(u => eff(u).eff)))}`;
@@ -910,7 +962,9 @@ function pgBoard() {
   <div class="toolbar">
     <label class="search">${ico("search")}<input id="q" type="search" placeholder="Search units" value="${esc(UI.q)}" data-i="q" aria-label="Search units"></label>
     <div class="chips">${d.branches.map(b => `<button class="chip ${UI.br === b.id ? "on" : ""}" data-a="br" data-b="${b.id}" aria-pressed="${UI.br === b.id}"><i style="background:${b.color}"></i>${esc(b.name)}</button>`).join("")}</div>
+    ${CABS().length ? `<select class="sel" id="cabF" data-c="cabF" aria-label="Show one cabinet"><option value="">All cabinets</option>${CABS().map(c => `<option value="${c.id}" ${cf === c.id ? "selected" : ""}>${esc(c.name)} (${d.units.filter(u => u.cab === c.id && !lost(u)).length})</option>`).join("")}<option value="_" ${cf === "_" ? "selected" : ""}>No cabinet</option></select>` : ""}
     <span class="grow"></span>
+    ${bookletFor() ? `<button class="btn" data-a="bookPick">Load booklet forces</button>` : ""}
     <button class="btn" data-a="frontAdd">${ico("plus")} Add front</button>
   </div>
   ${board}
@@ -923,7 +977,7 @@ function colMenu(f, i) {
 function card(u) {
   const b = branchById(u.branch), s = strOf(u), e = eff(u), L = lost(u);
   return `<article class="card ${u.side === "foe" ? "foe" : ""} ${L ? "is-lost" : ""}" data-id="${u.id}" tabindex="0" style="--bc:${b.color}" aria-label="${esc(u.name)}, ${esc(u.tname)}, HP ${fx(u.hp)} of ${fx(u.maxhp)}">
-    <div class="c-top"><span class="code" style="--bc:${b.color}">${esc(u.tcode || "—")}</span><b class="c-name">${esc(u.name)}</b>${UI.boardSide === "both" ? `<span class="sidetag ${u.side}">${u.side === "me" ? "OWN" : u.side === "ne" ? "NEUTRAL" : "ENEMY"}</span>` : ""}</div>
+    <div class="c-top"><span class="code" style="--bc:${b.color}">${esc(u.tcode || "—")}</span><b class="c-name">${cabDot(u.cab)}${esc(u.name)}</b>${UI.boardSide === "both" ? `<span class="sidetag ${u.side}">${u.side === "me" ? "OWN" : u.side === "ne" ? "NEUTRAL" : "ENEMY"}</span>` : ""}</div>
     <div class="hpbar"><i class="t-${tierOf(u)}" style="width:${s}%"></i></div>
     <div class="c-stats"><span>HP <b>${fx(u.hp)}/${fx(u.maxhp)}</b></span><span>STR <b>${L ? "—" : Math.round(s) + "%"}</b></span><span>ATK <b>${fx(e.eff)}</b>${e.eff !== e.base ? `<s>${fx(e.base)}</s>` : ""}</span><span>MOV <b>${fx(u.mov)}</b></span></div>
     <div class="c-act"><button class="mini" data-a="hp" data-id="${u.id}" data-d="-1" aria-label="${esc(u.name)}: lose 1 HP">−1</button><button class="mini" data-a="hp" data-id="${u.id}" data-d="1" aria-label="${esc(u.name)}: gain 1 HP">+1</button>${DEL ? "" : `<button class="mini" data-a="tray" data-id="${u.id}" title="Add to the battle tray" aria-label="${esc(u.name)}: add to the battle tray">${ico("swords")}</button>`}</div>
@@ -1117,7 +1171,7 @@ function pgRules() {
     ${step(6, "Spread and finish", null, "How the damage is shared between several defenders, and what happens at 0 HP.", fin)}
   </ol>
   ${dirs}
-  <section class="panel"><div class="panel-h"><div><h3>Sub classes</h3><p>The kinds of unit in each class, with the stats used when you add units. <b>All are placeholders until your allocation and the chairs' booklet arrive.</b> Editing a sub class does not change units already added; press “Update units” to push the new stats to them.</p></div><button class="btn sm" data-a="typeAdd">${ico("plus")} Add sub class</button></div>
+  <section class="panel"><div class="panel-h"><div><h3>Sub classes</h3><p>The kinds of unit in each class, with the stats used when you add units. ${bookletFor() ? "These are the chairs' Military Resources Booklet figures (A, D and M as ATK, HP and MOV)." : "<b>All are placeholders until your allocation and the chairs' booklet arrive.</b>"} Editing a sub class does not change units already added; press “Update units” to push the new stats to them.</p></div><button class="btn sm" data-a="typeAdd">${ico("plus")} Add sub class</button></div>
     <div class="tbl-wrap"><table class="tbl types"><thead><tr><th>Code</th><th>Name</th><th>Class</th><th class="r">ATK</th><th class="r">HP</th><th class="r">MOV</th><th class="r">RNG</th><th class="r">Units</th><th></th></tr></thead><tbody>${types}</tbody></table></div>
     <div class="row-btns"><button class="btn sm plain" data-a="typesReset">Restore placeholder stats</button></div></section>
   <section class="panel"><div class="panel-h"><div><h3>Classes</h3><p>The parts of the armed forces (Army, Navy, Airforce, Marine). Their colours are used on cards and charts.</p></div><button class="btn sm" data-a="branchAdd">${ico("plus")} Add class</button></div>
@@ -1166,13 +1220,14 @@ function renderDrawerRaw() {
   const fld = (k, l) => `<div class="fld"><label for="dr-${k}">${l}</label><input id="dr-${k}" type="number" min="0" step="0.5" value="${fx(u[k])}" data-c="uf" data-k="${k}"></div>`;
   host.innerHTML = `<div class="dr-back" data-a="closeDrawer"></div>
   <aside class="dr ${u.side}" role="dialog" aria-modal="true" aria-labelledby="drT">
-    <header class="dr-h"><div><div class="eyebrow">${esc(sideLbl(u.side))}${u.side === "foe" ? " · enemy unit" : ""}</div><h2 id="drT">${esc(u.name)}</h2><div class="muted">${esc(u.tname || "Custom unit")} · ${esc(branchById(u.branch).name)} · ${esc(frontName(u.front))}</div></div><button class="icon-btn" data-a="closeDrawer" aria-label="Close">${ico("x")}</button></header>
+    <header class="dr-h"><div><div class="eyebrow">${esc(sideLbl(u.side))}${u.side === "foe" ? " · enemy unit" : ""}</div><h2 id="drT">${esc(u.name)}</h2><div class="muted">${u.cab && cabById(u.cab) ? cabDot(u.cab) + esc(cabName(u.cab)) + " · " : ""}${esc(u.tname || "Custom unit")} · ${esc(branchById(u.branch).name)} · ${esc(frontName(u.front))}</div></div><button class="icon-btn" data-a="closeDrawer" aria-label="Close">${ico("x")}</button></header>
     <div class="dr-hp"><div class="dr-hp-top"><div><div class="eyebrow">Hit points</div><div class="dr-hp-v">${fx(u.hp)} <small>/ ${fx(u.maxhp)}</small></div></div><div class="dr-str tc-${t}">${lost(u) ? "Destroyed" : Math.round(s) + "%"}<small>${lost(u) ? "counts as lost" : "strength · " + TIER_L[t]}</small></div></div>
       <div class="hpbar lg"><i class="t-${t}" style="width:${s}%"></i></div>
       <div class="dr-hp-btns">${[-5, -1, 1, 5].map(v => `<button class="btn sm" data-a="hp" data-id="${u.id}" data-d="${v}">${v > 0 ? "+" : "−"}${Math.abs(v)} HP</button>`).join("")}<button class="btn sm" data-a="hpSet" data-id="${u.id}" data-v="full">Full HP</button><button class="btn sm danger" data-a="hpSet" data-id="${u.id}" data-v="0">Destroyed</button></div></div>
     <div class="dr-form"><div class="fgrid">
       <div class="fld span4"><label for="dr-name">Name</label><input id="dr-name" value="${esc(u.name)}" data-c="uf" data-k="name" maxlength="60"></div>
       <div class="fld span2" ${DEL ? "hidden" : ""}><label for="dr-side">Side</label><select id="dr-side" data-c="uf" data-k="side"><option value="me" ${u.side === "me" ? "selected" : ""}>${esc(sideLbl("me"))}</option><option value="foe" ${u.side === "foe" ? "selected" : ""}>${esc(sideLbl("foe"))} (enemy)</option></select></div>
+      ${CABS().length ? `<div class="fld span2"><label for="dr-cab">Cabinet</label><select id="dr-cab" data-c="uf" data-k="cab">${cabOpts(u.cab || "")}</select></div>` : ""}
       <div class="fld span2"><label for="dr-front">Front</label><select id="dr-front" data-c="uf" data-k="front">${frontOpts(u.front)}</select></div>
       <div class="fld span2"><label for="dr-type">Sub class</label><select id="dr-type" data-c="uf" data-k="type">${typeOpts(u.type)}<option value="" ${u.type ? "" : "selected"}>Custom unit</option></select></div>
       <div class="fld span2"><label for="dr-branch">Class</label><select id="dr-branch" data-c="uf" data-k="branch">${d.branches.map(b => `<option value="${b.id}" ${b.id === u.branch ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select></div>
@@ -1197,9 +1252,10 @@ function askText(title, label, val, cb) {
 function openAdd(front, side, typeId) {
   const d = D(), t0 = d.types.find(t => t.id === typeId) || d.types[0];
   if (side !== "me" && side !== "foe") side = (UI.page === "board" && UI.boardSide === "foe") || ((UI.page === "roster" || UI.page === "forces") && UI.rosterSide === "foe") ? "foe" : "me";
-  openModal(`<h2>Add units</h2><p class="muted">One card is made per unit. Stats come from the sub class (placeholders until your allocation and the chairs' booklet arrive) and can be changed below.</p>
+  openModal(`<h2>Add units</h2><p class="muted">One card is made per unit. Stats come from the sub class${bookletFor() ? " (the chairs' booklet)" : " (placeholders until your allocation and the chairs' booklet arrive)"} and can be changed below.</p>
   <div class="fgrid">
     <div class="fld span4" ${DEL ? "hidden" : ""}><span class="lbl">Side</span><div class="radio-seg"><label><input type="radio" name="adSide" value="me" ${side === "me" ? "checked" : ""}>${esc(sideLbl("me"))}</label><label><input type="radio" name="adSide" value="foe" ${side === "foe" ? "checked" : ""}>${esc(sideLbl("foe"))} (enemy)</label></div></div>
+    ${CABS().length ? `<div class="fld span4"><label for="adCab">Cabinet</label><select id="adCab" data-c="adCab">${cabOpts(UI.lastCab || "")}</select></div>` : ""}
     <div class="fld span2"><label for="adType">Sub class</label><select id="adType" data-c="adType">${typeOpts(t0 ? t0.id : "")}<option value="">Custom unit</option></select></div>
     <div class="fld"><label for="adQty">How many</label><input id="adQty" type="number" min="1" max="60" step="1" value="1" data-i="adQty"></div>
     <div class="fld"><label for="adFront">Front</label><select id="adFront">${frontOpts(front && front !== "lost" ? front : "reserve", true)}</select></div>
@@ -1222,8 +1278,9 @@ function submitAdd() {
   const q = clamp(Math.round(num($("adQty").value, 1)), 1, 60), front = $("adFront").value || "reserve", base = ($("adName").value.trim() || (t ? t.name : "Unit")).slice(0, 50), exact = q === 1 && $("adName").dataset.t === "1";
   const st = { atk: clamp(num($("adAtk").value), 0, STAT_MAX), maxhp: clamp(num($("adHp").value), 0, HP_MAX), mov: clamp(num($("adMov").value), 0, STAT_MAX), rng: clamp(num($("adRng").value), 0, STAT_MAX) };
   if (!(st.maxhp > 0)) { toast("Full HP must be more than 0"); $("adHp").focus(); return; }
+  const cab = $("adCab") && cabById($("adCab").value) ? $("adCab").value : ""; UI.lastCab = cab;
   closeModal();
-  act(`Added ${q} × ${base} (${sideLbl(side)}) to ${frontName(front)}`, dd => { let n = nextNum(dd, base); for (let i = 0; i < q; i++) dd.units.push(mkUnit(dd, { side, t, name: exact ? base : `${base} ${n++}`, front, hp: st.maxhp, ...st })); }, "add");
+  act(`Added ${q} × ${base} (${cab ? cabName(cab) + ", " : ""}${sideLbl(side)}) to ${frontName(front)}`, dd => { let n = nextNum(dd, base); for (let i = 0; i < q; i++) dd.units.push(mkUnit(dd, { side, t, name: exact ? base : `${base} ${n++}`, front, hp: st.maxhp, cab, ...st })); }, "add");
   toast(`${plural(q, "unit")} added`);
 }
 
@@ -1248,31 +1305,38 @@ function loadSample(quiet) {
   }, "data");
   if (quiet !== true) toast("Sample forces loaded");
 }
-/* the chairs' booklet order of battle for a country (presets.js, topic 2): named units at the booklet's strength, in Reserve until deployed.
+/* each cabinet's order of battle from its booklet (presets.js, topic 2): named units at the booklet's strength, in Reserve until deployed.
    A unit the booklet lists as "Not Found" (0%) is not raised yet, so it is left out rather than put on the books as already destroyed.
-   A chair picks the country and the side to put it on. */
+   A chair ticks the cabinets to load and the side each goes on. A unit the cabinet already has (same name) is not added again. */
 const BOOKS = () => TOPICS[S.topic].booklets || {};
 const bookletFor = () => Object.keys(BOOKS()).length ? true : null;
 const bookletBtn = () => bookletFor() ? `<button class="btn primary lg" data-a="bookPick">Load booklet forces</button>` : "";
 function openBooklet() {
-  const B = BOOKS(), side = UI.page === "board" && UI.boardSide === "foe" || (UI.page === "roster" || UI.page === "forces") && UI.rosterSide === "foe" ? "foe" : "me";
-  openModal(`<h2>Load booklet forces</h2><p class="muted">The country's units from the chairs' booklet, at the booklet's strength, in Reserve. Units the booklet lists as not found are left out. They are added to the forces already there.</p>
-  <div class="fgrid">
-    <div class="fld span4"><label for="bkKey">Booklet</label><select id="bkKey">${Object.keys(B).map(k => `<option value="${esc(k)}">${esc(B[k].country)} · ${esc(k)} (${plural(B[k].units.filter(u => u[2] > 0).length, "unit")})</option>`).join("")}</select></div>
-    <div class="fld span4"><span class="lbl">Side</span><div class="radio-seg"><label><input type="radio" name="bkSide" value="me" ${side === "me" ? "checked" : ""}>${esc(sideLbl("me"))}</label><label><input type="radio" name="bkSide" value="foe" ${side === "foe" ? "checked" : ""}>${esc(sideLbl("foe"))}</label></div></div>
-  </div>
-  <div class="m-act"><button class="btn" data-a="modalClose">Cancel</button><button class="btn primary" data-a="bookGo">Load forces</button></div>`);
+  const B = BOOKS(), d = D();
+  const rows = CABS().filter(c => B[c.id]).map(c => {
+    const bk = B[c.id], raised = bk.units.filter(u => u[2] > 0).length, have = d.units.filter(u => u.cab === c.id && !u.remote).length, def = c.side === "foe" ? "foe" : "me";
+    return `<tr><td><input type="checkbox" id="bk-${c.id}" data-bk="${c.id}" ${have ? "" : "checked"}></td><td><label for="bk-${c.id}" class="bk-n">${cabDot(c.id)}<b>${esc(c.name)}</b>${c.side === "ne" ? '<span class="muted">neutral</span>' : ""}</label></td><td>${raised} of ${bk.units.length}</td><td>${have ? plural(have, "unit") : '<span class="muted">none yet</span>'}</td><td><select class="sel" id="bks-${c.id}" aria-label="Side for ${esc(c.name)}"><option value="me" ${def === "me" ? "selected" : ""}>${esc(sideLbl("me"))}</option><option value="foe" ${def === "foe" ? "selected" : ""}>${esc(sideLbl("foe"))}</option></select></td></tr>`;
+  }).join("");
+  openModal(`<h2>Load booklet forces</h2><p class="muted">Each cabinet's units from its Military Resources Booklet, at the booklet's strength, in Reserve. Units the booklet lists as Not Found are left out, and a unit the cabinet already has (same name) is not added twice. Neutral cabinets go on the side you pick.</p>
+  <div class="bk-wrap"><table class="rtbl full bk-t"><thead><tr><th><span class="vh-only">Load</span></th><th>Cabinet</th><th>Raised</th><th>You have</th><th>Side</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <div class="m-act"><button class="btn plain" data-a="bookAll">Tick all</button><span class="grow"></span><button class="btn" data-a="modalClose">Cancel</button><button class="btn primary" data-a="bookGo">Load ticked cabinets</button></div>`);
 }
-function loadBooklet(key, side) {
-  const B = BOOKS()[key]; if (!B) return; side = side === "foe" ? "foe" : "me";
-  const raised = B.units.filter(u => u[2] > 0), absent = B.units.length - raised.length;
-  act(`Booklet forces loaded: ${B.country} for ${sideLbl(side)}, ${plural(raised.length, "unit")}${absent ? ` (${absent} not found, not added)` : ""}`, d => {
-    raised.forEach(([code, name, pct]) => {
-      const t = d.types.find(x => x.code === code); if (!t) return;
-      d.units.push(mkUnit(d, { side, t, name, front: "reserve", hp: r2(t.hp * pct / 100) }));
+/* picks: [[cabinet id, side]] */
+function loadBooklets(picks) {
+  const B = BOOKS(), d0 = D(); let n = 0, dup = 0, absent = 0; const done = [];
+  picks.forEach(([cab, side]) => { const bk = B[cab]; if (!bk) return; let k = 0; bk.units.forEach(u => { if (!(u[2] > 0)) { absent++; return; } if (d0.units.some(x => x.cab === cab && !x.remote && x.name === u[1])) { dup++; return; } k++; }); n += k; if (k) done.push(`${cabName(cab)} (${k}, ${sideLbl(side)})`); });
+  if (!n) { toast(dup ? "Those cabinets are already loaded" : "Nothing to load"); return; }
+  act(`Booklet forces loaded: ${done.join(", ")}${absent ? `; ${absent} not found, not added` : ""}${dup ? `; ${dup} already there` : ""}`, d => {
+    picks.forEach(([cab, side]) => {
+      const bk = B[cab]; if (!bk) return; side = side === "foe" ? "foe" : "me";
+      bk.units.forEach(([code, name, pct, cmd]) => {
+        if (!(pct > 0) || d.units.some(x => x.cab === cab && !x.remote && x.name === name)) return;
+        const t = d.types.find(x => x.code === code); if (!t) return;
+        d.units.push(mkUnit(d, { side, t, name, front: "reserve", hp: r2(t.hp * pct / 100), cab, notes: cmd ? "Command authority: " + cmd : "" }));
+      });
     });
   }, "data");
-  toast("Booklet forces loaded");
+  toast(`${plural(n, "unit")} loaded`);
 }
 /* topics whose old demo data was dropped by the v2 conversion get the new demo instead */
 function reseed() {
@@ -1393,7 +1457,8 @@ const A = {
   mfAll: el => { const on = el.dataset.v === "1", d = D(); d.branches.forEach(b => { if (on) delete UI.fold["mf:" + b.id]; else UI.fold["mf:" + b.id] = true; }); d.types.forEach(t => { if (on) UI.open["mf:" + t.id] = true; else delete UI.open["mf:" + t.id]; }); saveUI(); render(); },
   sample: el => D().units.length ? arm(el, loadSample) : loadSample(),
   bookPick: () => openBooklet(),
-  bookGo: () => { const k = $("bkKey") && $("bkKey").value, s = (document.querySelector("input[name=bkSide]:checked") || {}).value; closeModal(); loadBooklet(k, s); },
+  bookGo: () => { const picks = [...document.querySelectorAll("#modal input[data-bk]:checked")].map(i => [i.dataset.bk, ($("bks-" + i.dataset.bk) || {}).value]); if (!picks.length) { toast("Tick at least one cabinet"); return; } closeModal(); loadBooklets(picks); },
+  bookAll: () => { const b = [...document.querySelectorAll("#modal input[data-bk]")], all = b.every(i => i.checked); b.forEach(i => { i.checked = !all; }); },
   moraleStep: el => setMorale(el.dataset.s, D().sides[el.dataset.s].morale + num(el.dataset.d)),
   ovSide: el => { UI.ovSide = el.dataset.s; saveUI(); render(); },
   ovMetric: el => { UI.ovMetric = el.dataset.m; saveUI(); render(); },
@@ -1460,7 +1525,7 @@ const A = {
   uDup: el => { const u = byId(el.dataset.id); if (!u) return; const base = u.name.replace(/\s+\d+$/, ""); act(`Duplicated ${u.name}`, d => { const x = { ...u, id: uid("u"), name: `${base} ${nextNum(d, base)}`, ord: num(u.ord) + 0.5 }; delete x.remote; delete x.mirror; delete x.fsv; d.units.push(x); UI.drawer = x.id; }, "add"); },
   uDel: el => arm(el, () => { const u = byId(el.dataset.id); if (!u) return; if (foreign(u)) { denyForeign(u); return; } UI.drawer = null; UI.sel.att = UI.sel.att.filter(x => x !== u.id); UI.sel.def = UI.sel.def.filter(x => x !== u.id); act(`${u.name} removed from the roster`, d => { d.units = d.units.filter(x => x.id !== u.id); }, "remove"); })
 };
-const UF_L = { side: "side", front: "front", type: "sub class", branch: "class", hp: "HP", maxhp: "full HP", atk: "attack", mov: "movement", rng: "range" };
+const UF_L = { cab: "cabinet", side: "side", front: "front", type: "sub class", branch: "class", hp: "HP", maxhp: "full HP", atk: "attack", mov: "movement", rng: "range" };
 const C = {
   cpChar: el => {
     const u = el.dataset.u, t = el.dataset.t, ch = el.value || null;
@@ -1481,7 +1546,7 @@ const C = {
     else if (k === "name") { v = v.trim().slice(0, 60); if (!v) { render(); return; } }
     if (k === "maxhp" && !(v > 0)) { toast("Full HP must be more than 0"); render(); return; }
     if (String(u[k] == null ? "" : u[k]) === String(v)) return;
-    const show = x => k === "front" ? frontName(x) : k === "side" ? sideLbl(x) : k === "branch" ? branchById(x).name : k === "type" ? ((D().types.find(t => t.id === x) || {}).name || "Custom unit") : fx(x);
+    const show = x => k === "front" ? frontName(x) : k === "side" ? sideLbl(x) : k === "cab" ? (cabName(x) || "none") : k === "branch" ? branchById(x).name : k === "type" ? ((D().types.find(t => t.id === x) || {}).name || "Custom unit") : fx(x);
     const msg = k === "notes" ? null : k === "name" ? `Renamed: ${u.name} → ${v}` : `${u.name}: ${UF_L[k]} ${show(u[k])} → ${show(v)}`;
     act(msg, d => {
       const x = d.units.find(y => y.id === id); if (!x) return;
@@ -1489,6 +1554,7 @@ const C = {
       else if (k === "maxhp") { x.maxhp = v; if (x.hp > v) setHp(d, x, v); }
       else if (k === "front") moveTo(d, x, v);
       else if (k === "type") { const t = d.types.find(y => y.id === v); x.type = v; if (t) { x.tcode = t.code; x.tname = t.name; x.branch = t.branch; } else { x.tcode = ""; x.tname = "Custom unit"; } }
+      else if (k === "cab") x.cab = cabById(v) ? v : "";
       else if (k === "side") { x.side = v; UI.sel.att = UI.sel.att.filter(z => z !== id); UI.sel.def = UI.sel.def.filter(z => z !== id); }
       else x[k] = v;
     }, k === "front" ? "move" : k === "hp" ? "hp" : "edit");
@@ -1519,6 +1585,8 @@ const C = {
   sideName: el => { const s = el.dataset.s, v = String(el.value).trim().slice(0, 40) || (s === "me" ? "My Force" : "Enemy Force"), o = D().sides[s].name; if (v === o) return; act(`Side renamed: ${o} → ${v}`, d => { d.sides[s].name = v; }, "edit"); },
   morale: el => setMorale(el.dataset.s, el.value),
   frontName: el => { const f = frontById(el.dataset.f), v = el.value.trim().slice(0, 40); if (!f || !v || v === f.name) { render(); return; } act(`Front renamed: ${f.name} → ${v}`, d => { d.fronts.find(x => x.id === f.id).name = v; }, "edit"); },
+  cabF: el => { UI.cabF = el.value; saveUI(); render(); },
+  adCab: () => { const c = cabById($("adCab").value); if (c && (c.side === "me" || c.side === "foe")) { const r = document.querySelector(`input[name="adSide"][value="${c.side}"]`); if (r) r.checked = true; } },
   adType: () => { const t = D().types.find(x => x.id === $("adType").value); if (t) { $("adAtk").value = fx(t.atk); $("adHp").value = fx(t.hp); $("adMov").value = fx(t.mov); $("adRng").value = fx(t.rng); } if ($("adName").dataset.t !== "1") $("adName").value = t ? t.name : "Unit"; addHint(); }
 };
 const I = {
@@ -1564,6 +1632,13 @@ try { localStorage.removeItem("sentinel-side"); if (localStorage.getItem("sentin
 syncMenu();
 applyTheme();
 reseed();
+/* units loaded from a booklet before cabinets existed have no cabinet: give each the cabinet whose booklet names it, so it groups, hides and filters with the rest */
+(function tagCabinets() {
+  let ch = false;
+  Object.keys(S.topics || {}).forEach(t => { const B = (TOPICS[t] && TOPICS[t].booklets) || {}, names = {}; Object.keys(B).forEach(c => B[c].units.forEach(u => { names[u[1]] = c; }));
+    (S.topics[t].units || []).forEach(u => { if (!u.cab && !u.remote && names[u.name]) { u.cab = names[u.name]; ch = true; } }); });
+  if (ch) save();
+})();
 render();
 loadMorale(); setInterval(() => { if (!document.hidden) loadMorale(); }, 15000);
 loadRules(); setInterval(() => { if (!document.hidden) loadRules(); }, 15000);
