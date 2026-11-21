@@ -1048,3 +1048,41 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 /* stealth troops: faint and dashed on their own side's turn, off the map otherwise */
 .trp.stealth .trp-i { opacity: .45; } .trp.stealth .trp-hit { stroke: #fff; stroke-dasharray: 4 4; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
 .mp-join .btn.on { background: var(--accent-soft); color: var(--accent); }
+
+/* ---------- war map, tidied: one command bar (turn strip + tools), show / hide as a popover on the map ---------- */
+.mp-head { margin-bottom: 12px; } .mp-head .pg-h { margin-bottom: 0; }
+.mp-wrap { gap: 10px; }
+.panel.mp-bar { padding: 0; }
+.tb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 16px; border-bottom: 1px solid var(--line-2, var(--line)); }
+.tb-l { display: flex; align-items: center; gap: 10px; min-width: 0; flex: none; }
+.tb-r { padding: 3px 8px; border-radius: 6px; background: var(--panel-3); color: var(--ink-2); font: 700 11px/1.4 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.tb-t { display: flex; flex-direction: column; line-height: 1.25; } .tb-t b { font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; } .tb-t small { color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
+.tb-who { font-style: normal; } .tb-who.tb-me { color: var(--me); } .tb-who.tb-foe { color: var(--foe); }
+.tb-segs { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px; flex: 1 1 360px; min-width: 260px; margin: 0; padding: 0; list-style: none; }
+.tb-s { display: flex; align-items: center; justify-content: center; gap: 5px; height: 30px; padding: 0 4px; border-radius: 7px; background: var(--panel-3); color: var(--ink-3); font-size: 11.5px; overflow: hidden; border-bottom: 3px solid var(--me); }
+.tb-s.tb-foe { border-bottom-color: var(--foe); }
+.tb-s span { font: 700 11px "IBM Plex Mono", ui-monospace, monospace; } .tb-s b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-s.tb-done { opacity: .4; } .tb-s.tb-done span::after { content: "✓"; margin-left: 2px; }
+.tb-s.tb-now { background: var(--accent); color: #fff; } .tb-s.tb-now b { color: #fff; }
+.tb-act { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.tb-one { height: 32px; padding: 0 28px 0 10px; font-size: var(--fs-sm); }
+.mp-bar .tb-next { padding-left: 16px; padding-right: 16px; }
+.mp-bar-top { padding: 8px 16px; }
+.mp-lists { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mp-lists .mp-bar-k { width: auto; margin-left: 6px; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+.mp-lists .mp-bar-k:first-child { margin-left: 0; }
+.mp-ctx { border-top: 1px solid var(--line-2, var(--line)); }
+.mp-hn { font-style: normal; margin-left: 4px; padding: 0 6px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 11px; }
+.mp-hb-pop { position: absolute; z-index: 3; top: 52px; left: 50%; transform: translateX(-50%); width: min(780px, calc(100% - 20px)); border: 1px solid rgba(255, 255, 255, .18); border-radius: 12px; background: rgba(6, 20, 44, .96); box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+.mp-hb-pop .mp-hb { border-bottom: 0; }
+@media (max-width: 1100px) { .tb-segs { order: 3; flex-basis: 100%; } }
+@media (max-width: 560px) { .tb-s b { display: none; } }
+/* narrower desktops (menu open, laptops): the map takes the room; the troop card floats over its right edge only while a troop is selected */
+@media (min-width: 901px) and (max-width: 1599px) {
+  .mp-main { position: relative; grid-template-columns: minmax(240px, 280px) minmax(0, 1fr); justify-content: stretch; }
+  .mp-R { position: absolute; top: 10px; right: 10px; bottom: 10px; width: 290px; z-index: 4; pointer-events: none; }
+  .mp-R .mp-tl-in { inset: 0 0 auto 0; max-height: 100%; }
+  .mp-R .mp-card { pointer-events: auto; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
+  .mp-R .mp-nocard { display: none; }
+  .tb-s b { display: none; } .tb-s.tb-now b { display: inline; }
+}

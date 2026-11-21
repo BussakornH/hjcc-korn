@@ -40,18 +40,18 @@ function mpPtAdopt(j) { if (j && j.points) PTS = { t1: j.points.t1 || [], t2: j.
 /* ---------- the turn order (shared through api/lines.js) ----------
    A round is eight turns: One, Two, Two, One, One, Two, Two, One. Cabinet One is a side (Allied by default), Cabinet Two the other.
    step 0-7 is the turn being played; 8 means the round is over and the next press starts the next round. */
+let mpHbOpen = false;
 let TURN = { t1: { one: "me", round: 1, step: 0 }, t2: { one: "me", round: 1, step: 0 } }, mpTurnBusy = false;
 const TURN_ORDER = [1, 2, 2, 1, 1, 2, 2, 1];
 const turnOf = t => TURN[t] || { one: "me", round: 1, step: 0 };
 const turnSideAt = (t, i) => { const v = turnOf(t), two = v.one === "me" ? "foe" : "me"; return TURN_ORDER[i] === 1 ? v.one : two; };
 const turnNow = t => { const v = turnOf(t); return v.step < 8 ? turnSideAt(t, v.step) : null; };   /* the side whose turn it is, or null between rounds */
 function mpTurnBar(t) {
-  const v = turnOf(t), cur = v.step < 8 ? v.step : -1, nm = sd => sideLbl(sd).replace(/ Powers$/, "");
-  const pills = TURN_ORDER.map((n, i) => { const sd = turnSideAt(t, i), st = i < v.step ? "done" : i === cur ? "now" : "next"; return `<li class="tb-p tb-${st} tb-${sd}" aria-current="${st === "now" ? "step" : "false"}"><span class="tb-n">${i + 1}</span><b>${esc(nm(sd))}</b><small>Cabinet ${n === 1 ? "One" : "Two"}</small></li>`; }).join("");
-  const now = turnNow(t), nx = v.step < 7 ? turnSideAt(t, v.step + 1) : null;
-  const status = now ? `<b>Turn ${v.step + 1} of 8: ${esc(sideLbl(now))}</b><span>${nx ? `Next: ${esc(sideLbl(nx))}` : "Last turn of the round"}</span>` : `<b>Round ${v.round} complete</b><span>All eight turns played</span>`;
-  const one = `<label class="tb-one">Cabinet One <select class="sel" data-c="mapTurnOne" aria-label="Cabinet One">${["me", "foe"].map(sd => `<option value="${sd}" ${v.one === sd ? "selected" : ""}>${esc(nm(sd))}</option>`).join("")}</select></label>`;
-  return `<section class="panel mp-card mp-turn" aria-label="Turn order"><div class="tb-top"><div class="tb-round"><span class="eyebrow">Round ${v.round}</span>${status}</div><div class="tb-act">${one}<button class="btn sm" data-a="mapTurn" data-op="back" ${v.step === 0 && v.round === 1 ? "disabled" : ""}>Back</button><button class="btn sm plain" data-a="mapTurnReset" title="Back to round 1, turn 1">Reset</button><button class="btn primary" data-a="mapTurn" data-op="next">${now ? (v.step === 7 ? "Finish round" : "Next turn") : `Start round ${v.round + 1}`}</button></div></div><ol class="tb-pills">${pills}</ol></section>`;
+  const v = turnOf(t), cur = v.step < 8 ? v.step : -1, nm = sd => sideLbl(sd).replace(/ Powers$/, ""), now = turnNow(t), nx = v.step < 7 ? turnSideAt(t, v.step + 1) : null;
+  const segs = TURN_ORDER.map((n, i) => { const sd = turnSideAt(t, i), st = i < v.step ? "done" : i === cur ? "now" : "next"; return `<li class="tb-s tb-${st} tb-${sd}" title="Turn ${i + 1}: ${esc(sideLbl(sd))} (Cabinet ${n === 1 ? "One" : "Two"})${st === "done" ? ", played" : st === "now" ? ", now" : ""}" aria-current="${st === "now" ? "step" : "false"}"><span>${i + 1}</span><b>${esc(nm(sd))}</b></li>`; }).join("");
+  const label = now ? `<b>Turn ${v.step + 1}/8 · <em class="tb-who tb-${now}">${esc(nm(now))}</em></b><small>${nx ? "Next: " + esc(nm(nx)) : "Last turn of the round"}</small>` : `<b>Round ${v.round} complete</b><small>All eight turns played</small>`;
+  const one = `<select class="sel tb-one" data-c="mapTurnOne" aria-label="Cabinet One (goes first)" title="Cabinet One (goes first)">${["me", "foe"].map(sd => `<option value="${sd}" ${v.one === sd ? "selected" : ""}>One: ${esc(nm(sd))}</option>`).join("")}</select>`;
+  return `<div class="tb-row" role="group" aria-label="Turn order"><div class="tb-l"><span class="tb-r">Round ${v.round}</span><div class="tb-t">${label}</div></div><ol class="tb-segs">${segs}</ol><div class="tb-act">${one}<button class="btn sm" data-a="mapTurn" data-op="back" ${v.step === 0 && v.round === 1 ? "disabled" : ""}>Back</button><button class="btn sm plain" data-a="mapTurnReset" title="Back to round 1, turn 1">Reset</button><button class="btn sm primary tb-next" data-a="mapTurn" data-op="next">${now ? (v.step === 7 ? "Finish round" : "Next turn") : `Start round ${v.round + 1}`}</button></div></div>`;
 }
 function mpTurnSend(op) {
   if (mpTurnBusy) return; const t = S.topic, v = turnOf(t); mpTurnBusy = true;
@@ -298,19 +298,19 @@ const mpName = () => "Front line " + (LN[S.topic].length + 1);
 function pgMap() {
   const chair = ROLE === "chair";
   const full = document.body.classList.contains("side-off");
-  const head = `<div class="pg-head mp-head"><div><div class="eyebrow">${esc(topicLbl())}</div><h2 class="pg-h">War map</h2><p class="pg-p">${chair ? "Place forces, dig trenches and draw battle lines. Every chair sees each change." : "The theatre, its key cities and the battle lines."}</p></div>${chair ? `<div class="pg-tools"><button class="btn" data-a="mapFull" aria-pressed="${full}">${full ? "Show menu" : "Hide menu"}</button><button class="btn primary" data-a="toCalc">${ico("swords")} Combat calculator</button></div>` : ""}</div>`;
+  const head = `<div class="pg-head mp-head"><div><div class="eyebrow">${esc(topicLbl())}</div><h2 class="pg-h">War map</h2></div>${chair ? `<div class="pg-tools"><button class="btn" data-a="mapFull" aria-pressed="${full}">${full ? "Show menu" : "Hide menu"}</button><button class="btn primary" data-a="toCalc">${ico("swords")} Combat calculator</button></div>` : ""}</div>`;
   const t = S.topic;
   if (!LN || !MPLAND || !MPB[t] || !mpTD || !MPREL[t]) { if (mpLoad !== 1 && mpLoad !== -1) { mpLoad = 1; mpLoadData(); } return head + `<section class="panel"><p class="muted">${mpLoad === -1 ? "Could not load the map." : "Loading the map…"}</p></section>`; }
   const g = mpGeo(t);
     if (MPT !== t) { MPT = t; MPV = mpFit(g); mpTS = null; mpPick.clear(); mpSel = null; mpVx = null; mpDraft = []; mpTool = "edit"; }
   const live = document.querySelector("#page .mapsvg"), keepBase = !!(live && live.isConnected && live.dataset.t === t && live.dataset.base === "1");   /* the base map (sea, land, borders, terrain) never changes: the live one is kept, so it is not rebuilt or parsed again */
   const v = MPV, svg = `<svg class="mapsvg" data-t="${t}" data-base="${keepBase ? "0" : "1"}" viewBox="${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}" data-z="${g.W / v.w > 1.8 ? 1 : 0}" data-tool="${chair ? mpTool : ""}" data-terr="${mpTerr ? 1 : 0}" role="img" aria-label="Battle map">${keepBase ? "" : mpBase(t)}<g id="mp-lines">${mpLinesSvg(t)}</g><g id="mp-range">${mpRangeSvg(t)}</g><g id="mp-points">${mpPointsSvg(t)}</g><g id="mp-cities">${mpCitiesSvg(t)}</g><g id="mp-troops">${mpTroopsSvg(t)}</g></svg>`;
-  const zoom = `<div class="mp-zoom"><button class="btn sm" data-a="mapZoom" data-z="1.3" aria-label="Zoom in">${ico("plus")}</button><button class="btn sm" data-a="mapZoom" data-z="0.77" aria-label="Zoom out">−</button><button class="btn sm" data-a="mapZoom" data-z="0">Fit</button><button class="btn sm${mpTerr ? " on" : ""}" data-a="mapTerr" aria-pressed="${mpTerr}">Terrain</button></div>`;
+  const zoom = `<div class="mp-zoom"><button class="btn sm" data-a="mapZoom" data-z="1.3" aria-label="Zoom in">${ico("plus")}</button><button class="btn sm" data-a="mapZoom" data-z="0.77" aria-label="Zoom out">−</button><button class="btn sm" data-a="mapZoom" data-z="0">Fit</button><button class="btn sm${mpTerr ? " on" : ""}" data-a="mapTerr" aria-pressed="${mpTerr}">Terrain</button>${chair ? (() => { const n = mpTroops().filter(x => mpHid(t, x)).length; return `<button class="btn sm${mpHbOpen ? " on" : ""}" data-a="mapHb" aria-expanded="${mpHbOpen}">Show / hide${n ? ` <em class="mp-hn">${n} hidden</em>` : ""}</button>`; })() : ""}</div>${chair && mpHbOpen ? `<div class="mp-hb-pop">${mpHideBar(t)}</div>` : ""}`;
   const pk = chair ? mpPickLive().size : 0, pickBar = pk ? `<div class="mp-pickbar" role="status"><b>${plural(pk, "unit")} selected</b><span>Click the map to put ${pk > 1 ? "them" : "it"} down</span><button class="btn sm" data-a="mapPickClear">Clear</button></div>` : "";
   const legend = `<div class="mp-key"><span><i class="k-line"></i>Battle line</span><span><i class="k-trench"></i>Trench</span><span><i class="k-riv"></i>River</span><span><i class="k-for"></i>Forest</span><span><i class="k-el"></i>Low to high ground</span><span><i class="k-pt weak"></i>Weak point (+2 damage)</span><span><i class="k-pt fort"></i>Fortified point (-5 damage)</span><span><i class="k-dot"></i>Key city</span><span><i class="k-dot me"></i>${esc(chair ? sideLbl("me") : t === "t2" ? "Allied" : "France")}</span><span><i class="k-dot foe"></i>${esc(chair ? sideLbl("foe") : t === "t2" ? "Central" : "England")}</span><span>Zoom in for more cities</span></div>`;
   setTimeout(() => mpLabels(document.querySelector(".mapsvg")), 0);
   const col = c => `<aside class="mp-tl mp-${c}" aria-label="${c === "L" ? "Forces" : "Selected troop"}"><div class="mp-tl-in">${c === "L" ? mpForcesCol(t) : mpCardCol()}</div></aside>`;
-  return head + `<div class="mp-wrap">${chair ? mpTurnBar(t) : ""}${chair ? mpChairBar(t) : mpViewBar(t)}<div class="mp-main">${col("L")}<div class="mp-board">${chair ? mpHideBar(t) : ""}<div class="mp-stage"><div class="mp-view">${zoom}${pickBar}${svg}</div></div>${legend}</div>${col("R")}</div><div class="mp-foot">${mpTerrCard()}</div></div>`;
+  return head + `<div class="mp-wrap">${chair ? mpChairBar(t) : mpViewBar(t)}<div class="mp-main">${col("L")}<div class="mp-board"><div class="mp-stage"><div class="mp-view">${zoom}${pickBar}${svg}</div></div>${legend}</div>${col("R")}</div><div class="mp-foot">${mpTerrCard()}</div></div>`;
 }
 
 /* show / hide troops on the map, per side and per cabinet: this screen only, nothing is saved */
@@ -361,15 +361,16 @@ function mpChairBar(t) {
     const zone = seg("mapZone", mpClosed(mpGeo(t), sel) ? [["", "Off"], ["w", "Blue inside"], ["e", "Red inside"]] : [["", "Off"], ["w", "Blue west"], ["e", "Blue east"]], sel.zone || "", "z");
     ctx = mpCtx(mpHint(`${esc(sel.name)} <em class="mp-n">${plural(sel.pts.length, "point")}</em>`, mpVx != null ? "Point chosen. Remove it, or double-click it." : "Drag a round point to move it, a small one to bend the line."),
       `${mpLbl("Zone")}${zone}<i class="mp-sep"></i><button class="btn sm" data-a="mapRename">Rename</button><button class="btn sm" data-a="mapSimplify">Fewer points</button><button class="btn sm" data-a="mapDelPt" ${mpVx != null && sel.pts.length > 2 ? "" : "disabled"}>Remove point</button><button class="btn sm danger" data-a="mapDelLine">Delete line</button>`);
-  } else ctx = mpCtx(mpHint("", L.length ? "Click a line to move or bend it, or pick one below." : "No battle lines yet. Draw the first one."));
+  } else ctx = "";
   const lines = L.filter(l => !isTrench(l)), trs = L.filter(isTrench).sort((a, b) => (a.side === b.side ? 0 : a.side === "me" ? -1 : 1) || TR_TIERS.indexOf(a.tier) - TR_TIERS.indexOf(b.tier));
-  const chips = mpChips(lines, "mapLine", mpDrawing() ? null : mpSel) + (mpDrawing() ? "" : `<button class="mp-chip mp-add" data-a="mapTool" data-t="draw">+ New line</button>`);
-  const trChips = mpChips(trs, "mapLine", mpDrawing() ? null : mpSel, true) + (mpDrawing() ? "" : `<button class="mp-chip mp-add" data-a="mapTool" data-t="trench">+ New trench</button>`);
-  return `<section class="panel mp-card mp-bar"><div class="mp-bar-top">${tools}<button class="btn sm plain" data-a="mapReset">Restore defaults</button></div>${ctx}<div class="mp-bar-lines"><span class="mp-bar-k">Battle lines</span><div class="mp-chips">${chips}</div></div><div class="mp-bar-lines"><span class="mp-bar-k">Trenches</span><div class="mp-chips">${trChips}</div></div></section>`;
+  const chips = mpChips(lines, "mapLine", mpDrawing() ? null : mpSel), trChips = mpChips(trs, "mapLine", mpDrawing() ? null : mpSel, true);
+  const lists = (lines.length ? `<span class="mp-bar-k">Lines</span>${chips}` : "") + (trs.length ? `<span class="mp-bar-k">Trenches</span>${trChips}` : "");
+  return `<section class="panel mp-card mp-bar">${mpTurnBar(t)}<div class="mp-bar-top">${tools}<div class="mp-chips mp-lists">${lists}</div><button class="btn sm plain" data-a="mapReset" title="Put the default battle lines back">Restore defaults</button></div>${ctx}</section>`;
 }
 
 const MAPA = {
   mapFull: () => { const off = document.body.classList.toggle("side-off"); document.body.classList.remove("nav-open"); try { localStorage.setItem("sentinel-side2", off ? "off" : "on"); } catch (e) {} if (typeof syncMenu === "function") syncMenu(); render(); setTimeout(() => mpLabels(document.querySelector(".mapsvg")), 260); },
+  mapHb: () => { mpHbOpen = !mpHbOpen; render(); },
   mapTurn: el => mpTurnSend(el.dataset.op),
   mapTurnReset: el => arm(el, () => mpTurnSend("reset")),
   mapTool: el => { mpTool = el.dataset.t; mpPtNew = null; mpPt = null; mpDraft = []; mpVx = null; mpCity = null; mpPick.clear(); render(); },
