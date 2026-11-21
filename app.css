@@ -817,7 +817,7 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .ln.draft .ln-l { stroke-dasharray: 8 6; }
 .vh { r: calc(var(--k) * 8px); fill: #fff; stroke: #06142c; stroke-width: 2.5px; cursor: move; } .vh.on { fill: #5aa9ff; stroke: #fff; }
 .vm { r: calc(var(--k) * 5px); fill: rgba(255, 255, 255, .45); stroke: #06142c; stroke-width: 1.5px; cursor: copy; }
-.mp-zoom { position: absolute; z-index: 2; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+.mp-zoom { position: absolute; z-index: 2; top: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: calc(100% - 20px); }
 .mp-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; } .mp-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .mp-card { padding: 16px; }
 .mp-u { position: relative; display: block; width: 100%; margin-bottom: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }

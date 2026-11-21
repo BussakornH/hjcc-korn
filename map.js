@@ -248,7 +248,7 @@ function pgMap() {
   const g = mpGeo(t);
     if (MPT !== t) { MPT = t; MPV = mpFit(g); mpTS = null; mpPlace = null; mpSel = null; mpVx = null; mpDraft = []; mpTool = "edit"; }
   const v = MPV, svg = `<svg class="mapsvg" data-t="${t}" viewBox="${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}" data-z="${g.W / v.w > 1.8 ? 1 : 0}" data-tool="${chair ? mpTool : ""}" data-terr="${mpTerr ? 1 : 0}" role="img" aria-label="Battle map">${mpBase(t)}<g id="mp-lines">${mpLinesSvg(t)}</g><g id="mp-range">${mpRangeSvg(t)}</g><g id="mp-points">${mpPointsSvg(t)}</g><g id="mp-cities">${mpCitiesSvg(t)}</g><g id="mp-troops">${mpTroopsSvg(t)}</g></svg>`;
-  const zoom = `<div class="mp-zoom"><button class="btn sm" data-a="mapZoom" data-z="1.3" aria-label="Zoom in">${ico("plus")}</button><button class="btn sm" data-a="mapZoom" data-z="0.77" aria-label="Zoom out">−</button><button class="btn sm" data-a="mapZoom" data-z="0">Fit</button><button class="btn sm${mpTerr ? " on" : ""}" data-a="mapTerr">Terrain</button></div>`;
+  const zoom = `<div class="mp-zoom"><button class="btn sm" data-a="mapZoom" data-z="1.3" aria-label="Zoom in">${ico("plus")}</button><button class="btn sm" data-a="mapZoom" data-z="0.77" aria-label="Zoom out">−</button><button class="btn sm" data-a="mapZoom" data-z="0">Fit</button><button class="btn sm${mpTerr ? " on" : ""}" data-a="mapTerr">Terrain</button>${chair ? ["me", "foe"].map(sd => `<button class="btn sm${mpHide[t] === sd ? " on" : ""}" data-a="mapHide" data-s="${sd}" aria-pressed="${mpHide[t] === sd}" title="Hide every ${esc(sideLbl(sd))} troop on this map (your screen only)">Hide ${esc(sideLbl(sd).split(" ")[0])}</button>`).join("") : ""}</div>`;
   const legend = `<div class="mp-key"><span><i class="k-line"></i>Battle line</span><span><i class="k-riv"></i>River</span><span><i class="k-for"></i>Forest</span><span><i class="k-el"></i>Low to high ground</span><span><i class="k-pt weak"></i>Weak point (+2 damage)</span><span><i class="k-pt fort"></i>Fortified point (-5 damage)</span><span><i class="k-dot"></i>Key city</span><span><i class="k-dot me"></i>${esc(chair ? sideLbl("me") : t === "t2" ? "Allied" : "France")}</span><span><i class="k-dot foe"></i>${esc(chair ? sideLbl("foe") : t === "t2" ? "Central" : "England")}</span><span>Zoom in for more cities</span></div>`;
   setTimeout(() => mpLabels(document.querySelector(".mapsvg")), 0);
   const col = c => `<aside class="mp-tl mp-${c}"><div class="mp-tl-in">${mpTroopCol(t, c)}</div></aside>`;
@@ -343,6 +343,7 @@ const MAPA = {
   mapZone: el => { const l = LN[S.topic].find(x => x.id === mpSel); if (!l) return; l.zone = el.dataset.z; render(); mpSave(); },
   mapTerrCard: () => { mpTerrOpen = !mpTerrOpen; render(); },
   mapTerr: () => { mpTerr = !mpTerr; render(); },
+  mapHide: el => { const t = S.topic, sd = el.dataset.s; mpHide[t] = mpHide[t] === sd ? null : sd; const x = mpTrFind(mpTS); if (x && mpHid(t, x)) mpTS = null; render(); },
   mapCity: el => { if (ROLE === "delegate" || mpTool !== "city") return; mpCity = el.dataset.n; render(); },
   mapCitySide: el => mpCitySet(el.dataset.s),
   mapCityDef: () => mpCitySet("default"),
