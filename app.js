@@ -100,6 +100,7 @@ function defaultRules() {
       { min: 50, tDmg: 100, aLoss: 0, note: "Heavy damage" },
       { min: 100, tDmg: 100, aLoss: 0, note: "Wiped out" }],
     useCounter: false, spread: "focus", rounding: "none", autoLost: true,
+    deadCounter: 50, trenchCut: 50, trenchKm: 30,
     dir: { me: [], foe: [] }   /* directives: extra ATK for one side (all units, a class, or a sub class) */
   };
 }
@@ -318,7 +319,7 @@ const roundBy = (v, m) => m === "round" ? Math.round(v) : m === "floor" ? Math.f
 
 /* one side hitting the other: effective attack -> formula -> (results chart) */
 function strike(att, def, morale, mult, bonus, R) {
-  const parts = att.map(u => ({ u, ...eff(u, R) }));
+  const parts = att.map(u => { const e = eff(u, R), k = u._k == null ? 1 : u._k; return k === 1 ? { u, ...e } : { u, ...e, eff: r2(e.eff * k), base: r2(e.base * k), k }; });
   const V = { atk: sum(parts.map(x => x.eff)), base: sum(parts.map(x => x.base)), morale: R.useMorale ? clamp(num(morale, 50), 0, 100) : 100, mult: R.useMult ? Math.max(0, num(mult, 1)) : 1, bonus: R.useBonus ? num(bonus, 0) : 0,
     hp: sum(def.map(u => u.hp)), maxhp: sum(def.map(u => u.maxhp)), n: att.length, m: def.length, datk: sum(def.map(u => eff(u, R).eff)), str: att.length ? sum(parts.map(x => x.s)) / att.length : 0 };
   const F = formula(R); let raw; try { raw = (F.f || STD)(V); } catch (e) { raw = 0; }
@@ -371,8 +372,10 @@ function resolve(attIds, defIds, o) {
   const zfx = new Map(), hB0 = new Map(hB), over = dB.length ? spread(dB, hB, main.dealt, R.spread) : 0;
   zoneAdjust(dB, hB0, hB, zfx);
   if (main.self > 0) dA.forEach(u => hA.set(u.id, Math.max(0, hA.get(u.id) - num(u.hp) * main.self / 100)));
-  /* counter-attack: every defender still standing after the hit strikes back at full strength, even one with a sliver of HP left (and even if it took no damage); one reduced to 0 does not */
-  const stand = B.filter(u => !bB.includes(u) && hB.get(u.id) > 1e-9);
+  /* counter-attack: every defender still standing after the hit strikes back at full strength, even one with a sliver of HP left (and even if it took no damage).
+     One reduced to 0 still strikes back, at deadCounter % of its attack (the chairs' rule: 50% by default; 0 turns it off). */
+  const dk = clamp(num(R.deadCounter, 50), 0, 100) / 100, can = B.filter(u => !bB.includes(u));
+  const stand = can.filter(u => hB.get(u.id) > 1e-9).concat(dk > 0 ? can.filter(u => !(hB.get(u.id) > 1e-9)).map(u => ({ ...u, _k: dk })) : []);
   let counter = R.useCounter ? strike(stand, dA, o.dm, 1, 0, R) : null;
   if (counter && !stand.length) counter = { ...noHit(counter), none: true };
   else if (counter && !dA.length) counter = { ...noHit(counter), safe: true };
@@ -1115,7 +1118,7 @@ function resultHTML(r) {
 }
 function steps(r) {
   const R = D().rules, M = r.main, li = []; let n = 1;
-  const line = x => `${esc(x.u.name)}: ATK ${fx(x.base)} at ${Math.round(x.s)}% strength` + (x.dir ? ` (includes ${sgn(x.dir)} from the ${esc(sideLbl(x.u.side))} directives)` : "") + (x.none ? " → too weak to attack" : (x.pen ? `, ${sgn(x.pen)} strength penalty` : "") + (x.mod ? `, ${sgn(x.mod)} combat modifier` : "")) + ` = <b>${fx(x.eff)}</b>`;
+  const line = x => `${esc(x.u.name)}${x.k ? ` (destroyed, strikes back at ${Math.round(x.k * 100)}%)` : ""}: ATK ${fx(x.base)} at ${Math.round(x.s)}% strength` + (x.dir ? ` (includes ${sgn(x.dir)} from the ${esc(sideLbl(x.u.side))} directives)` : "") + (x.none ? " → too weak to attack" : (x.pen ? `, ${sgn(x.pen)} strength penalty` : "") + (x.mod ? `, ${sgn(x.mod)} combat modifier` : "")) + ` = <b>${fx(x.eff)}</b>`;
   const vs = V => exprVars(M.ferr ? STD_EXPR : R.expr).map(k => `${k} = ${fx(V[k])}`).join(", ");
   li.push(`<li><h4>${n++} · Effective attack</h4><ul>${M.parts.map(x => `<li>${line(x)}</li>`).join("")}</ul><p>Together: <b>${fx(M.V.atk)}</b>${!R.useStr && !R.useMod ? " (no strength rules switched on)" : ""}</p></li>`);
   li.push(`<li><h4>${n++} · Damage formula</h4><p><code>${esc(M.ferr ? STD_EXPR : R.expr)}</code> with ${vs(M.V)} = <b>${fx(M.raw)}</b>${R.rounding !== "none" ? `, ${RND[R.rounding]}: <b>${fx(M.dmg)}</b>` : ""}${R.useMorale ? "" : " (morale is off, so it counts as 100%)"}</p></li>`);
@@ -1153,7 +1156,8 @@ function pgRules() {
     <details class="vars"><summary>Names and functions you can use</summary><table>${VARS.map(([k, t]) => `<tr><td><code>${k}</code></td><td>${t}</td></tr>`).join("")}</table><p>Functions: min(a, b), max(a, b), round(x), floor(x), ceil(x), abs(x), sqrt(x), pow(a, b), clamp(x, lo, hi), if(test, a, b). Compare with &gt; &lt; &gt;= &lt;= == != (true counts as 1). Dividing by 0 gives 0.</p></details>
     <div class="trial"><label>atk<input class="n" type="number" step="any" value="${fx(UI.tv.atk)}" data-i="tv" data-k="atk" id="tv-atk"></label><label>morale %<input class="n" type="number" step="any" value="${fx(UI.tv.morale)}" data-i="tv" data-k="morale" id="tv-morale" ${R.useMorale ? "" : "disabled"}></label><label>defenders' hp<input class="n" type="number" step="any" value="${fx(UI.tv.hp)}" data-i="tv" data-k="hp" id="tv-hp"></label><div class="out" id="trialOut">${trialText()}</div></div>`;
   const fin = `<div class="fgrid"><div class="fld span2"><label for="r-spread">Spread over several defenders</label><select id="r-spread" data-c="rsel" data-k="spread">${Object.entries(SPREAD).map(([k, l]) => `<option value="${k}" ${R.spread === k ? "selected" : ""}>${l}</option>`).join("")}</select><small>Damage is spread ${SPREAD_S[R.spread]}.</small></div><div class="fld span2"><label for="r-round">Rounding of damage</label><select id="r-round" data-c="rsel" data-k="rounding">${Object.entries(RND).map(([k, l]) => `<option value="${k}" ${R.rounding === k ? "selected" : ""}>${l[0].toUpperCase() + l.slice(1)}</option>`).join("")}</select></div></div>
-    <div class="terms">${term("useCounter", "Counter-attack", "The defenders strike back at the same time with the same formula (using their morale, no multiplier or bonus).")}${term("autoLost", "Move units at 0 HP to Destroyed", "When off, a unit at 0 HP stays on its front but counts as lost.")}</div>`;
+    <div class="terms">${term("useCounter", "Counter-attack", "The defenders strike back at the same time with the same formula (using their morale, no multiplier or bonus). A defender wiped out by the attack still strikes back, at the share set below.")}${term("autoLost", "Move units at 0 HP to Destroyed", "When off, a unit at 0 HP stays on its front but counts as lost.")}</div>
+    ${R.useCounter ? `<div class="fgrid"><div class="fld span2"><label for="r-dead">Counter-attack of a destroyed defender</label><input id="r-dead" class="n" type="number" min="0" max="100" step="5" value="${fx(num(R.deadCounter, 50))}" data-c="rnum" data-k="deadCounter"><small>% of its attack. A defender the attack wipes out still strikes back with this share (0 turns it off).</small></div></div>` : ""}`;
   const types = d.types.map(t => { const n = d.units.filter(u => u.type === t.id).length; return `<tr><td><input class="in code-in" value="${esc(t.code)}" data-c="type" data-id="${t.id}" data-k="code" id="ty-${t.id}-code" maxlength="8" aria-label="Code"></td><td><input class="in" value="${esc(t.name)}" data-c="type" data-id="${t.id}" data-k="name" id="ty-${t.id}-name" maxlength="40" aria-label="Name">${t.ph ? '<span class="tag-ph">PLACEHOLDER</span>' : ""}</td><td><select class="in" data-c="type" data-id="${t.id}" data-k="branch" id="ty-${t.id}-branch" aria-label="Branch">${d.branches.map(b => `<option value="${b.id}" ${b.id === t.branch ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select></td>${["atk", "hp", "mov", "rng"].map(k => `<td class="r"><input class="n" type="number" min="0" step="0.5" value="${fx(t[k])}" data-c="type" data-id="${t.id}" data-k="${k}" id="ty-${t.id}-${k}" aria-label="${k}"></td>`).join("")}<td class="r mono">${n}</td><td class="nowrap"><button class="btn sm" data-a="typePush" data-id="${t.id}" ${n ? "" : "disabled"} title="Give every unit of this sub class these stats (HP keeps its share)">Update units</button> <button class="icon-btn sm" data-a="typeDel" data-id="${t.id}" aria-label="Delete sub class">${ico("trash")}</button></td></tr>`; }).join("");
   const dside = UI.ruleSide === "foe" ? "foe" : "me", drows = ((R.dir && R.dir[dside]) || []);
   const dopt = cur => `<option value="*" ${cur === "*" ? "selected" : ""}>All units</option>` + d.branches.map(b => `<option value="b:${b.id}" ${cur === "b:" + b.id ? "selected" : ""}>All ${esc(b.name)}</option>`).join("") + d.types.map(t => `<option value="c:${esc(t.code)}" ${cur === "c:" + t.code ? "selected" : ""}>${esc(t.name)} (${esc(t.code)})</option>`).join("");
@@ -1574,6 +1578,8 @@ const C = {
     const v = k === "atk" ? num(el.value, row.atk) : k === "note" ? el.value.trim().slice(0, 80) : el.value; if (row[k] === v) return;
     act(`Directive for ${sideLbl(sd)}: ${k === "atk" ? `ATK ${sgn(row.atk)} → ${sgn(v)}` : k === "note" ? "note" : "target changed"}`, d => { d.rules.dir[sd][i][k] = v; }, "rules");
   },
+  rnum: el => { const k = el.dataset.k, L = { deadCounter: ["Counter-attack of a destroyed defender", 0, 100, "%"], trenchCut: ["Trench protection", 0, 100, "% less damage"], trenchKm: ["Trench reach", 1, 300, " km"] }[k]; if (!L) return;
+    const v = clamp(r2(num(el.value, D().rules[k])), L[1], L[2]); if (num(D().rules[k]) === v) { el.value = fx(v); return; } act(`Rule changed: ${L[0]} set to ${fx(v)}${L[3]}`, d => { d.rules[k] = v; }, "rules"); },
   rsel: el => { const k = el.dataset.k, v = el.value; if (D().rules[k] === v) return; act(`Rule changed: ${k === "spread" ? "damage spread" : "rounding"} set to ${k === "spread" ? SPREAD[v] : RND[v]}`, d => { d.rules[k] = v; }, "rules"); },
   expr: el => { const v = el.value.trim() || STD_EXPR, o = D().rules.expr; if (v === o) return; act(`Damage formula: ${o} → ${v}`, d => { d.rules.expr = v; }, "rules"); },
   type: el => {
