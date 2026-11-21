@@ -274,12 +274,13 @@ const mpLatLon = x => Math.abs(x.lat).toFixed(2) + "°" + (x.lat < 0 ? "S" : "N"
 function mpTroopCard() {
   const x = mpTrFind(mpTS); if (!x) return ""; const chair = ROLE !== "delegate", pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0, km = Math.round(x.mov * ((window.SENTINEL_TERRAIN || {}).kmPerMov || 30)), local = chair && x.uid && D().units.some(u => u.id === x.uid);
   const dom = mpDomain(x.code);
-  return `<section class="panel mp-card"><div class="trc"><img src="symbols/${x.aff}/${x.code}.png" alt=""><div><b>${esc(x.name)}</b><span>${esc(x.code)}${x.lost ? " · destroyed" : ""}</span></div></div>
+  return `<section class="panel mp-card"><div class="trc"><img src="symbols/${x.aff}/${x.code}.png" alt=""><div><b>${esc(x.name)}</b><span>${esc(x.code)} · ${esc(sideLbl(x.side))}${x.cab && cabById(x.cab) ? " · " + esc(cabName(x.cab)) : ""}${x.lost ? " · destroyed" : ""}</span></div></div>
     <div class="trc-hp"><div class="trc-bar"><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></div><span>HP <b>${fx(x.hp)}</b> / ${fx(x.maxhp)} · ${pc}%</span></div>
     ${(() => { const tr = mpTrenchOf(S.topic, x); return tr ? `<p class="trc-tr"><b>In the ${esc(tr.name)}</b> (${TR_TIER[tr.tier].toLowerCase()}): takes ${fx(num(D().rules.trenchCut, 50))}% less damage when attacked.</p>` : ""; })()}
     <div class="trc-st"><span>ATK <b>${fx(x.atk)}</b></span><span>MOV <b>${fx(x.mov)}</b></span><span>RNG <b>${fx(x.rng)}</b></span><span class="trc-pos">AT <b>${mpLatLon(x)}</b></span></div>
     <div class="mp-act trc-go"><button class="btn sm" data-a="mapTrPin" title="Move the map to this unit and mark where it stands">${ico("pin")} Pinpoint location</button>${local && ROLE !== "admin" ? `<button class="btn sm primary" data-a="mapTrCalc" title="Put this unit into the combat calculator and open it">${ico("swords")} Open in calculator</button>` : ""}</div>
     <p class="muted" style="margin:8px 0 0">${x.mov > 0 ? `Reach this turn: up to ${km} km on open ground${dom === "air" ? "" : dom === "sea" ? ", on water only" : ". Mountains, forest, marsh and river crossings shorten it"}. The solid line is the full move, the dashed line half of it.` : "This unit does not move."}</p>
+    ${chair && local && ROLE !== "admin" ? `<div class="mp-join"><span>${x.side === "ne" ? "Neutral. Join a side:" : "Side:"}</span>${MPSIDES.filter(sd => sd !== x.side).map(sd => `<button class="btn sm" data-a="mapTrJoin" data-s="${sd}">${sd === "ne" ? "Make neutral" : "Join " + esc(sideLbl(sd).replace(/ Powers$/, ""))}</button>`).join("")}</div>` : ""}
     ${chair ? `<div class="mp-act" style="flex-wrap:wrap;margin-top:12px">${local ? `<button class="btn sm" data-a="mapTrHp" data-d="-1">−1 HP</button><button class="btn sm" data-a="mapTrHp" data-d="1">+1 HP</button><button class="btn sm" data-a="mapTrTray" title="Keep it for the next engagement without leaving the map">${ico("plus")} Add to battle tray</button>` : ""}<button class="btn sm danger" data-a="mapTrDel">Take off the map</button></div>
 ${local ? "" : '<p class="muted" style="margin-top:8px">This troop is not in your forces on this device, so its HP cannot be changed here.</p>'}` : ""}</section>`;
 }
@@ -308,19 +309,27 @@ function mpGroups(side, kind, items, codeOf, row) {
     return `<div class="mp-grp${open ? " open" : ""}${hid ? " hid" : ""}" data-gk="${esc(id)}"><div class="mp-ghr"><button class="mp-gh" data-a="mapGrp" data-k="${esc(id)}" aria-expanded="${open}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><i class="mp-gdot" style="background:${esc(br.color)}"></i><b>${esc(br.name)}</b><small>${xs.length}</small></button>${extra}</div><div class="mp-gb">${xs.map(row).join("")}</div></div>`;
   }).join("");
 }
-function mpTroopCol(t, col) {
-  const chair = ROLE !== "delegate", d = D(), side = col === "L" ? "me" : "foe", aff = mpAffOf(side), nm = sideLbl(side), picks = mpPickLive();
-  const sel = mpTrFind(mpTS), card = sel && (col === "L") === (sel.side === "me") ? mpTroopCard() : "";
+/* The two columns beside the map. Left: the forces of one side at a time (Allied / Central / Neutral switch): the order of battle still to put
+   on the map, then that side's troops on it. Right: the card of the troop that is selected (on the map or in the list). */
+const MPSIDES = ["me", "foe", "ne"];
+const mpSideNow = () => MPSIDES.includes(UI.mpSide) ? UI.mpSide : "me";
+function mpForcesCol(t) {
+  const chair = ROLE !== "delegate", d = D(), side = mpSideNow(), aff = mpAffOf(side), picks = mpPickLive();
   const placed = new Set(mpTroops().map(x => x.uid)), free = d.units.filter(u => u.side === side && !lost(u) && !placed.has(u.id)), fn = id => id === "reserve" ? "Reserve" : ((d.fronts.find(f => f.id === id) || {}).name || "Front");
   const row = u => { const rs = u.front === "reserve", on = picks.has(u.id); return `<div class="trt${rs ? " res" : ""}${on ? " on" : ""}" id="trt-${esc(u.id)}" role="checkbox" aria-checked="${on}" tabindex="0" data-a="mapTrType" data-id="${esc(u.id)}" title="${rs ? "In reserve. " : ""}Click to select (several at once), then click the map. Or drag it onto the map."><span class="trt-ck" aria-hidden="true"></span><img src="symbols/${aff}/${esc(MPCODES.includes(u.tcode) ? u.tcode : "INF")}.png" alt="" draggable="false"><span><b>${esc(u.name)}${rs ? '<em class="trt-tag">Reserve</em>' : ""}</b><i>${rs ? "" : esc(fn(u.front)) + " · "}ATK ${fx(u.atk)} · HP ${fx(u.hp)}/${fx(u.maxhp)} · MOV ${fx(u.mov)}</i></span></div>`; };
   const act = free.filter(u => u.front !== "reserve"), res = free.filter(u => u.front === "reserve"), mine = free.filter(u => picks.has(u.id)).length;
   const sect = (cls, label, n, body) => `<div class="mp-ob ${cls}"><div class="mp-ob-h"><b>${label}</b><small>${n}</small></div>${body}</div>`;
-  const hint = picks.size ? `<b>${plural(picks.size, "unit")} selected${mine !== picks.size ? ` (${mine} here)` : ""}.</b> Click the map to put ${picks.size > 1 ? "them" : "it"} down. Esc to stop.` : "Order of battle: click units to select one or several, then click the map. Or drag one.";
-  const kinds = chair ? `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 8px"><div><h3>${esc(nm)}</h3><p>${hint}</p></div>${mine ? `<button class="btn sm" data-a="mapPickClear" data-s="${side}">Clear</button>` : ""}</div><div class="trt-g">${free.length ? sect("act", "Active", act.length, act.length ? mpGroups(side, "ob", act, u => u.tcode, row) : '<p class="muted" style="margin:4px 0 8px">No active units off the map.</p>') + (res.length ? sect("res", "Reserve", res.length, mpGroups(side, "ob-res", res, u => u.tcode, row)) : "") : '<p class="muted" style="margin:8px 0 0">Every unit on this side is on the map. Add more on the Order of Battle page.</p>'}</div></section>` : "";
-  const on = mpTroops().filter(x => x.side === side).sort((a, b) => a.name.localeCompare(b.name));
-  const hidN = on.filter(x => mpHid(t, x)).length;
-  const list = `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 6px"><div><h3>${chair ? "On the map" : esc(nm)}</h3><p>${on.length ? plural(on.length, "troop") + (chair ? "" : " on the map") + (hidN ? ` · ${hidN} hidden` : "") : "No troops placed yet"}</p></div></div>${mpGroups(side, "map", on, x => x.code, x => { const pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0, h = mpHid(t, x); return `<button class="trl-row${x.id === mpTS ? " on" : ""}${x.lost ? " dead" : ""}${h ? " hid" : ""}" data-a="mapTroop" data-id="${esc(x.id)}"${h ? ' title="Hidden on the map"' : ""}><img src="symbols/${x.aff}/${esc(x.code)}.png" alt=""><span><b>${esc(x.name)}</b><em><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></em></span><small>${fx(x.hp)}/${fx(x.maxhp)}</small></button>`; })}</section>`;
-  return card + kinds + list;
+  const cnt = sd => d.units.filter(u => u.side === sd && !lost(u)).length;
+  const tabs = `<div class="mp-tabs" role="tablist" aria-label="Side">${MPSIDES.map(sd => `<button role="tab" class="mp-tab mp-tab-${sd}${sd === side ? " on" : ""}" data-a="mapSideTab" data-s="${sd}" aria-selected="${sd === side}"><i></i><b>${esc(sideLbl(sd).replace(/ Powers$/, ""))}</b><small>${cnt(sd)}</small></button>`).join("")}</div>`;
+  const hint = picks.size ? `<b>${plural(picks.size, "unit")} selected${mine !== picks.size ? ` (${mine} here)` : ""}.</b> Click the map to put ${picks.size > 1 ? "them" : "it"} down.` : side === "ne" ? "Neutral forces: click units to select them, then click the map. Open a troop to have it join a side." : "Click units to select one or several, then click the map. Or drag one.";
+  const empty = cnt(side) ? '<p class="muted mp-empty">Every unit on this side is on the map.</p>' : `<p class="muted mp-empty">No ${esc(sideLbl(side))} units yet.${bookletFor() ? ' <button class="lnk" data-a="bookAllGo">Load booklet forces</button>' : ""}</p>`;
+  const ob = chair ? `<section class="panel mp-card mp-forces">${tabs}<div class="mp-fhint"><p>${hint}</p>${mine ? `<button class="btn sm" data-a="mapPickClear" data-s="${side}">Clear</button>` : ""}</div><div class="trt-g">${free.length ? (act.length ? sect("act", "Active", act.length, mpGroups(side, "ob", act, u => u.tcode, row)) : "") + (res.length ? sect("res", "Reserve", res.length, mpGroups(side, "ob-res", res, u => u.tcode, row)) : "") : empty}</div></section>` : "";
+  const on = mpTroops().filter(x => x.side === side).sort((a, b) => a.name.localeCompare(b.name)), hidN = on.filter(x => mpHid(t, x)).length;
+  const list = `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 6px"><div><h3>On the map</h3><p>${on.length ? plural(on.length, esc(sideLbl(side).replace(/ Powers$/, "")) + " troop") + (hidN ? ` · ${hidN} hidden` : "") : "None placed yet"}</p></div></div>${mpGroups(side, "map", on, x => x.code, x => { const pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0, h = mpHid(t, x); return `<button class="trl-row${x.id === mpTS ? " on" : ""}${x.lost ? " dead" : ""}${h ? " hid" : ""}" data-a="mapTroop" data-id="${esc(x.id)}"${h ? ' title="Hidden on the map"' : ""}><img src="symbols/${x.aff}/${esc(x.code)}.png" alt=""><span><b>${esc(x.name)}</b><em><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></em></span><small>${fx(x.hp)}/${fx(x.maxhp)}</small></button>`; })}</section>`;
+  return ob + list;
+}
+function mpCardCol() {
+  return mpTrFind(mpTS) ? mpTroopCard() : `<section class="panel mp-card mp-nocard"><div class="mp-nocard-i">${ico("pin")}</div><h3>No troop selected</h3><p class="muted">Click a troop on the map, or in the list on the left, to see its strength, reach and orders here.</p></section>`;
 }
 const MPCODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "XBW", "HOB", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF", "MP", "ARM", "SAP", "BAT"];
 
@@ -345,6 +354,9 @@ Object.assign(MAPA, {
     const old = num(u.hp), nv = clamp(r2(old + num(el.dataset.d)), 0, num(u.maxhp)); if (nv === old) { toast(num(el.dataset.d) > 0 ? "Already at full HP" : "Already at 0 HP"); return; }
     setHp(d, u, nv); addLog(d, `${u.name}: HP ${fx(old)} → ${fx(nv)}${lost(u) ? " (destroyed)" : ""}`, "hp"); snap(d); save(); render();
   },
+  mapSideTab: el => { UI.mpSide = el.dataset.s; saveUI(); render(); },
+  mapTrJoin: el => { const x = mpTrFind(mpTS), u = x && D().units.find(y => y.id === x.uid), sd = el.dataset.s; if (!u || !MPSIDES.includes(sd)) return; if (u.remote) { toast("That unit belongs to " + u.remote); return; }
+    act(`${u.name} ${sd === "ne" ? "is now neutral" : "joins the " + sideLbl(sd)}`, d => { const y = d.units.find(z => z.id === u.id); if (y) { y.side = sd; UI.sel.att = UI.sel.att.filter(z => z !== u.id); UI.sel.def = UI.sel.def.filter(z => z !== u.id); } }, "edit"); },
   mapTrTray: () => { const x = mpTrFind(mpTS); if (x && x.uid) A.tray({ dataset: { id: x.uid } }); },
   mapTrPin: () => { const x = mpTrFind(mpTS); if (x) mpPinpoint(x); },
   mapTrCalc: () => { const x = mpTrFind(mpTS), u = x && x.uid && D().units.find(y => y.id === x.uid); if (u) toCalc(u.id); }   /* one click: the unit goes in the calculator and the page switches */

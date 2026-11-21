@@ -173,7 +173,7 @@ const branchById = id => D().branches.find(b => b.id === id) || { id: "", name: 
 const frontById = id => D().fronts.find(f => f.id === id);
 const frontName = id => (frontById(id) || { name: "Reserve" }).name;
 /* a chair is neutral, like the UN: sides carry the names of the topic, never "my force" / "enemy force" */
-const CHAIR_SIDES = { t1: { me: "French Army", foe: "British Army" }, t2: { me: "Allied Powers", foe: "Central Powers" } };
+const CHAIR_SIDES = { t1: { me: "French Army", foe: "British Army", ne: "Neutral" }, t2: { me: "Allied Powers", foe: "Central Powers", ne: "Neutral" } };
 const sideLbl = s => ROLE === "chair" && CHAIR_SIDES[S.topic] ? CHAIR_SIDES[S.topic][s] : D().sides[s].name || (s === "me" ? "My Force" : "Enemy Force");
 const sideWord = s => ROLE === "chair" ? sideLbl(s) : s === "me" ? "own" : "enemy";
 const sideCol = s => s === "me" ? "var(--me)" : "var(--foe)";
@@ -430,7 +430,7 @@ const PAGES = [
   { id: "forces", name: "Forces", icon: "layers" },
   { id: "board", name: "Order of Battle", icon: "board" },
   { id: "morale", name: "Morale", icon: "pulse" },
-  { id: "map", name: "Battle Map", icon: "map" },
+  { id: "map", name: "War Map", icon: "map" },
   { id: "combat", name: "Combat Calculator", icon: "swords" },
   { id: "sides", name: "Sides by day", icon: "board" },
   { id: "rules", name: "Rules & Formulas", icon: "sliders" },
@@ -1096,7 +1096,7 @@ function pgCombat() {
     ${R.useBonus ? `<div class="fld"><label for="bonus">Flat bonus damage</label><input id="bonus" type="number" step="0.5" value="${UI.bonus}" data-c="bonus"></div>` : ""}
     ${[...s.A, ...s.D].some(isArty) ? artyBox(s) : ""}
     <div class="formula-mini">Damage formula<code>${esc(formula(R).err ? STD_EXPR : R.expr)}</code></div></div>`;
-  return head("Combat calculator", "Tick the units in the engagement. The estimate updates as you go; nothing changes on the forces until you press Apply.", `<button class="btn" data-a="swap">${ico("move")} Swap attacker and defender</button><button class="btn" data-a="clearSel">Clear</button>`) + `
+  return head("Combat calculator", "Tick the units in the engagement. The estimate updates as you go; nothing changes on the forces until you press Apply.", `<button class="btn primary" data-a="warMap" title="Open the battle map with the menu closed">${ico("map")} War map</button><button class="btn" data-a="swap">${ico("move")} Swap attacker and defender</button><button class="btn" data-a="clearSel">Clear</button>`) + `
   <section class="cb-grid">${pickPanel("att", s.aS, s.A)}${mid}${pickPanel("def", s.dS, s.D)}</section>
   <section class="panel">${r ? resultHTML(r) : '<div class="none big">Tick at least one attacking unit and one defending unit to see the estimate.</div>'}</section>
   <section class="panel"><div class="panel-h"><div><h3>Battle record</h3></div></div>${battleTable(12)}</section>`;
@@ -1240,7 +1240,7 @@ function renderDrawerRaw() {
       <div class="dr-hp-btns">${[-5, -1, 1, 5].map(v => `<button class="btn sm" data-a="hp" data-id="${u.id}" data-d="${v}">${v > 0 ? "+" : "−"}${Math.abs(v)} HP</button>`).join("")}<button class="btn sm" data-a="hpSet" data-id="${u.id}" data-v="full">Full HP</button><button class="btn sm danger" data-a="hpSet" data-id="${u.id}" data-v="0">Destroyed</button></div></div>
     <div class="dr-form"><div class="fgrid">
       <div class="fld span4"><label for="dr-name">Name</label><input id="dr-name" value="${esc(u.name)}" data-c="uf" data-k="name" maxlength="60"></div>
-      <div class="fld span2" ${DEL ? "hidden" : ""}><label for="dr-side">Side</label><select id="dr-side" data-c="uf" data-k="side"><option value="me" ${u.side === "me" ? "selected" : ""}>${esc(sideLbl("me"))}</option><option value="foe" ${u.side === "foe" ? "selected" : ""}>${esc(sideLbl("foe"))} (enemy)</option></select></div>
+      <div class="fld span2" ${DEL ? "hidden" : ""}><label for="dr-side">Side</label><select id="dr-side" data-c="uf" data-k="side"><option value="me" ${u.side === "me" ? "selected" : ""}>${esc(sideLbl("me"))}</option><option value="foe" ${u.side === "foe" ? "selected" : ""}>${esc(sideLbl("foe"))} (enemy)</option><option value="ne" ${u.side === "ne" ? "selected" : ""}>Neutral</option></select></div>
       ${CABS().length ? `<div class="fld span2"><label for="dr-cab">Cabinet</label><select id="dr-cab" data-c="uf" data-k="cab">${cabOpts(u.cab || "")}</select></div>` : ""}
       <div class="fld span2"><label for="dr-front">Front</label><select id="dr-front" data-c="uf" data-k="front">${frontOpts(u.front)}</select></div>
       <div class="fld span2"><label for="dr-type">Sub class</label><select id="dr-type" data-c="uf" data-k="type">${typeOpts(u.type)}<option value="" ${u.type ? "" : "selected"}>Custom unit</option></select></div>
@@ -1265,10 +1265,10 @@ function askText(title, label, val, cb) {
 }
 function openAdd(front, side, typeId) {
   const d = D(), t0 = d.types.find(t => t.id === typeId) || d.types[0];
-  if (side !== "me" && side !== "foe") side = (UI.page === "board" && UI.boardSide === "foe") || ((UI.page === "roster" || UI.page === "forces") && UI.rosterSide === "foe") ? "foe" : "me";
+  if (side !== "me" && side !== "foe" && side !== "ne") side = UI.page === "map" ? (UI.mpSide || "me") : (UI.page === "board" && UI.boardSide === "foe") || ((UI.page === "roster" || UI.page === "forces") && UI.rosterSide === "foe") ? "foe" : "me";
   openModal(`<h2>Add units</h2><p class="muted">One card is made per unit. Stats come from the sub class${bookletFor() ? " (the chairs' booklet)" : " (placeholders until your allocation and the chairs' booklet arrive)"} and can be changed below.</p>
   <div class="fgrid">
-    <div class="fld span4" ${DEL ? "hidden" : ""}><span class="lbl">Side</span><div class="radio-seg"><label><input type="radio" name="adSide" value="me" ${side === "me" ? "checked" : ""}>${esc(sideLbl("me"))}</label><label><input type="radio" name="adSide" value="foe" ${side === "foe" ? "checked" : ""}>${esc(sideLbl("foe"))} (enemy)</label></div></div>
+    <div class="fld span4" ${DEL ? "hidden" : ""}><span class="lbl">Side</span><div class="radio-seg"><label><input type="radio" name="adSide" value="me" ${side === "me" ? "checked" : ""}>${esc(sideLbl("me"))}</label><label><input type="radio" name="adSide" value="foe" ${side === "foe" ? "checked" : ""}>${esc(sideLbl("foe"))} (enemy)</label><label><input type="radio" name="adSide" value="ne" ${side === "ne" ? "checked" : ""}>Neutral</label></div></div>
     ${CABS().length ? `<div class="fld span4"><label for="adCab">Cabinet</label><select id="adCab" data-c="adCab">${cabOpts(UI.lastCab || "")}</select></div>` : ""}
     <div class="fld span2"><label for="adType">Sub class</label><select id="adType" data-c="adType">${typeOpts(t0 ? t0.id : "")}<option value="">Custom unit</option></select></div>
     <div class="fld"><label for="adQty">How many</label><input id="adQty" type="number" min="1" max="60" step="1" value="1" data-i="adQty"></div>
@@ -1326,14 +1326,14 @@ const BOOKS = () => TOPICS[S.topic].booklets || {};
 const bookletFor = () => Object.keys(BOOKS()).length ? true : null;
 const bookletBtn = () => bookletFor() ? `<button class="btn primary lg" data-a="bookAllGo" title="Every cabinet's units from its booklet, at full strength, in Reserve">Load booklet forces</button><button class="btn lg" data-a="bookPick">Pick cabinets…</button>` : "";
 /* one click: every cabinet's booklet units, each on its own side (the neutrals on the first side, as in the picker); units already there are skipped */
-const preloadAll = () => loadBooklets(CABS().filter(c => BOOKS()[c.id]).map(c => [c.id, c.side === "foe" ? "foe" : "me"]));
+const preloadAll = () => loadBooklets(CABS().filter(c => BOOKS()[c.id]).map(c => [c.id, c.side === "foe" || c.side === "ne" ? c.side : "me"]));
 function openBooklet() {
   const B = BOOKS(), d = D();
   const rows = CABS().filter(c => B[c.id]).map(c => {
-    const bk = B[c.id], raised = bk.units.filter(u => u[2] > 0).length, have = d.units.filter(u => u.cab === c.id && !u.remote).length, def = c.side === "foe" ? "foe" : "me";
-    return `<tr><td><input type="checkbox" id="bk-${c.id}" data-bk="${c.id}" ${have ? "" : "checked"}></td><td><label for="bk-${c.id}" class="bk-n">${cabDot(c.id)}<b>${esc(c.name)}</b>${c.side === "ne" ? '<span class="muted">neutral</span>' : ""}</label></td><td>${raised} of ${bk.units.length}</td><td>${have ? plural(have, "unit") : '<span class="muted">none yet</span>'}</td><td><select class="sel" id="bks-${c.id}" aria-label="Side for ${esc(c.name)}"><option value="me" ${def === "me" ? "selected" : ""}>${esc(sideLbl("me"))}</option><option value="foe" ${def === "foe" ? "selected" : ""}>${esc(sideLbl("foe"))}</option></select></td></tr>`;
+    const bk = B[c.id], raised = bk.units.filter(u => u[2] > 0).length, have = d.units.filter(u => u.cab === c.id && !u.remote).length, def = c.side === "foe" || c.side === "ne" ? c.side : "me";
+    return `<tr><td><input type="checkbox" id="bk-${c.id}" data-bk="${c.id}" ${have ? "" : "checked"}></td><td><label for="bk-${c.id}" class="bk-n">${cabDot(c.id)}<b>${esc(c.name)}</b>${c.side === "ne" ? '<span class="muted">neutral</span>' : ""}</label></td><td>${raised} of ${bk.units.length}</td><td>${have ? plural(have, "unit") : '<span class="muted">none yet</span>'}</td><td><select class="sel" id="bks-${c.id}" aria-label="Side for ${esc(c.name)}"><option value="me" ${def === "me" ? "selected" : ""}>${esc(sideLbl("me"))}</option><option value="foe" ${def === "foe" ? "selected" : ""}>${esc(sideLbl("foe"))}</option><option value="ne" ${def === "ne" ? "selected" : ""}>Neutral</option></select></td></tr>`;
   }).join("");
-  openModal(`<h2>Load booklet forces</h2><p class="muted">Each cabinet's units from its Military Resources Booklet, at full strength, in Reserve (awaiting deployment). A unit the cabinet already has (same name) is not added twice. Neutral cabinets go on the side you pick.</p>
+  openModal(`<h2>Load booklet forces</h2><p class="muted">Each cabinet's units from its Military Resources Booklet, at full strength, in Reserve (awaiting deployment). A unit the cabinet already has (same name) is not added twice. Spain, the USA and the Netherlands start Neutral; any cabinet can be put on another side here.</p>
   <div class="bk-wrap"><table class="rtbl full bk-t"><thead><tr><th><span class="vh-only">Load</span></th><th>Cabinet</th><th>Units</th><th>You have</th><th>Side</th></tr></thead><tbody>${rows}</tbody></table></div>
   <div class="m-act"><button class="btn plain" data-a="bookAll">Tick all</button><span class="grow"></span><button class="btn" data-a="modalClose">Cancel</button><button class="btn primary" data-a="bookGo">Load ticked cabinets</button></div>`);
 }
@@ -1344,7 +1344,7 @@ function loadBooklets(picks) {
   if (!n) { toast(dup ? "Those cabinets are already loaded" : "Nothing to load"); return; }
   act(`Booklet forces loaded: ${done.join(", ")}${absent ? `; ${absent} not found, not added` : ""}${dup ? `; ${dup} already there` : ""}`, d => {
     picks.forEach(([cab, side]) => {
-      const bk = B[cab]; if (!bk) return; side = side === "foe" ? "foe" : "me";
+      const bk = B[cab]; if (!bk) return; side = side === "foe" || side === "ne" ? side : "me";
       bk.units.forEach(([code, name, pct, cmd]) => {
         if (!(pct > 0) || d.units.some(x => x.cab === cab && !x.remote && x.name === name)) return;
         const t = d.types.find(x => x.code === code); if (!t) return;
@@ -1454,6 +1454,9 @@ const A = {
     SentinelAuth.api("DELETE", "/api/accounts", { u }).then(r => r.ok ? (toast("Removed " + u), loadAcc()) : r.json().then(j => toast(ACC_ERR[j.error] || "Could not remove it"), () => toast("Could not remove it")), () => toast("Could not reach the server"));
   },
   topic: el => { if (ROLE !== "admin" || S.topic === el.dataset.t) return; S.topic = el.dataset.t; UI.sel = { att: [], def: [] }; UI.cm = { att: null, def: null }; UI.drawer = null; UI.open = {}; save(); saveUI(); document.body.classList.remove("nav-open"); render(); toast(topicLbl()); },
+  /* the battle map with the side menu closed, for the most map on screen (the menu button opens it again) */
+  warMap: () => { document.body.classList.remove("nav-open"); document.body.classList.add("side-off"); try { localStorage.setItem("sentinel-side2", "off"); } catch (e) {} go("map"); },
+  toCalc: () => go("combat"),
   menu: () => { if (matchMedia("(max-width: 900px)").matches) document.body.classList.toggle("nav-open"); else { const off = document.body.classList.toggle("side-off"); try { localStorage.setItem("sentinel-side2", off ? "off" : "on"); } catch (e) {} } syncMenu(); },
   undo: () => undo(),
   theme: el => { UI.theme = el.dataset.v; applyTheme(); saveUI(); chrome(); },
@@ -1605,7 +1608,7 @@ const C = {
   morale: el => setMorale(el.dataset.s, el.value),
   frontName: el => { const f = frontById(el.dataset.f), v = el.value.trim().slice(0, 40); if (!f || !v || v === f.name) { render(); return; } act(`Front renamed: ${f.name} → ${v}`, d => { d.fronts.find(x => x.id === f.id).name = v; }, "edit"); },
   cabF: el => { UI.cabF = el.value; saveUI(); render(); },
-  adCab: () => { const c = cabById($("adCab").value); if (c && (c.side === "me" || c.side === "foe")) { const r = document.querySelector(`input[name="adSide"][value="${c.side}"]`); if (r) r.checked = true; } },
+  adCab: () => { const c = cabById($("adCab").value); if (c) { const r = document.querySelector(`input[name="adSide"][value="${c.side}"]`); if (r) r.checked = true; } },
   adType: () => { const t = D().types.find(x => x.id === $("adType").value); if (t) { $("adAtk").value = fx(t.atk); $("adHp").value = fx(t.hp); $("adMov").value = fx(t.mov); $("adRng").value = fx(t.rng); } if ($("adName").dataset.t !== "1") $("adName").value = t ? t.name : "Unit"; addHint(); }
 };
 const I = {

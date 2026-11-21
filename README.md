@@ -56,6 +56,11 @@ in Reserve, leaves out units the booklet lists as Not Found, and never adds a un
 to the other chairs and onto the map, where its troops carry the cabinet's tag. On the battle map a chair can hide either side or any cabinet
 (this screen only) and select several units to put down with one click.
 
+## War map layout
+Left: the forces of one side at a time (Allied / Central / Neutral switch): units still to put on the map, grouped by cabinet, then that side's
+troops on the map. Right: the card of the selected troop (a neutral unit's card has Join Allied / Join Central). Spain, the USA and the Netherlands
+load as Neutral. The Combat Calculator's "War map" button opens the map with the side menu closed; the map's "Show menu" brings it back.
+
 ## Trenches
 On the battle map the Trenches tool lets a chair dig trenches for either side: frontline, support and backline (any number of each; lines and
 trenches together stop at 40 per map). They are battle lines with `kind: "trench"`, a `side` and a `tier`, saved by `api/lines.js`.

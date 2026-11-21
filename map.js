@@ -272,7 +272,8 @@ const mpName = () => "Front line " + (LN[S.topic].length + 1);
 
 function pgMap() {
   const chair = ROLE === "chair";
-  const head = `<div class="pg-head"><div><div class="eyebrow">${esc(topicLbl())}</div><h2 class="pg-h">Battle map</h2><p class="pg-p">${chair ? "Draw, move and remove the battle lines. Delegates see every change as soon as you save it." : "The theatre, its key cities and the battle lines. Chairs move the lines; this page updates by itself."}</p></div></div>`;
+  const full = document.body.classList.contains("side-off");
+  const head = `<div class="pg-head mp-head"><div><div class="eyebrow">${esc(topicLbl())}</div><h2 class="pg-h">War map</h2><p class="pg-p">${chair ? "Place forces, dig trenches and draw battle lines. Every chair sees each change." : "The theatre, its key cities and the battle lines."}</p></div>${chair ? `<div class="pg-tools"><button class="btn" data-a="mapFull" aria-pressed="${full}">${full ? "Show menu" : "Hide menu"}</button><button class="btn primary" data-a="toCalc">${ico("swords")} Combat calculator</button></div>` : ""}</div>`;
   const t = S.topic;
   if (!LN || !MPLAND || !MPB[t] || !mpTD || !MPREL[t]) { if (mpLoad !== 1 && mpLoad !== -1) { mpLoad = 1; mpLoadData(); } return head + `<section class="panel"><p class="muted">${mpLoad === -1 ? "Could not load the map." : "Loading the map…"}</p></section>`; }
   const g = mpGeo(t);
@@ -281,9 +282,9 @@ function pgMap() {
   const v = MPV, svg = `<svg class="mapsvg" data-t="${t}" data-base="${keepBase ? "0" : "1"}" viewBox="${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}" data-z="${g.W / v.w > 1.8 ? 1 : 0}" data-tool="${chair ? mpTool : ""}" data-terr="${mpTerr ? 1 : 0}" role="img" aria-label="Battle map">${keepBase ? "" : mpBase(t)}<g id="mp-lines">${mpLinesSvg(t)}</g><g id="mp-range">${mpRangeSvg(t)}</g><g id="mp-points">${mpPointsSvg(t)}</g><g id="mp-cities">${mpCitiesSvg(t)}</g><g id="mp-troops">${mpTroopsSvg(t)}</g></svg>`;
   const zoom = `<div class="mp-zoom"><button class="btn sm" data-a="mapZoom" data-z="1.3" aria-label="Zoom in">${ico("plus")}</button><button class="btn sm" data-a="mapZoom" data-z="0.77" aria-label="Zoom out">−</button><button class="btn sm" data-a="mapZoom" data-z="0">Fit</button><button class="btn sm${mpTerr ? " on" : ""}" data-a="mapTerr" aria-pressed="${mpTerr}">Terrain</button></div>`;
   const pk = chair ? mpPickLive().size : 0, pickBar = pk ? `<div class="mp-pickbar" role="status"><b>${plural(pk, "unit")} selected</b><span>Click the map to put ${pk > 1 ? "them" : "it"} down</span><button class="btn sm" data-a="mapPickClear">Clear</button></div>` : "";
-  const legend = `<div class="mp-key"><span><i class="k-line"></i>Battle line</span><span><i class="k-riv"></i>River</span><span><i class="k-for"></i>Forest</span><span><i class="k-el"></i>Low to high ground</span><span><i class="k-pt weak"></i>Weak point (+2 damage)</span><span><i class="k-pt fort"></i>Fortified point (-5 damage)</span><span><i class="k-dot"></i>Key city</span><span><i class="k-dot me"></i>${esc(chair ? sideLbl("me") : t === "t2" ? "Allied" : "France")}</span><span><i class="k-dot foe"></i>${esc(chair ? sideLbl("foe") : t === "t2" ? "Central" : "England")}</span><span>Zoom in for more cities</span></div>`;
+  const legend = `<div class="mp-key"><span><i class="k-line"></i>Battle line</span><span><i class="k-trench"></i>Trench</span><span><i class="k-riv"></i>River</span><span><i class="k-for"></i>Forest</span><span><i class="k-el"></i>Low to high ground</span><span><i class="k-pt weak"></i>Weak point (+2 damage)</span><span><i class="k-pt fort"></i>Fortified point (-5 damage)</span><span><i class="k-dot"></i>Key city</span><span><i class="k-dot me"></i>${esc(chair ? sideLbl("me") : t === "t2" ? "Allied" : "France")}</span><span><i class="k-dot foe"></i>${esc(chair ? sideLbl("foe") : t === "t2" ? "Central" : "England")}</span><span>Zoom in for more cities</span></div>`;
   setTimeout(() => mpLabels(document.querySelector(".mapsvg")), 0);
-  const col = c => `<aside class="mp-tl mp-${c}"><div class="mp-tl-in">${mpTroopCol(t, c)}</div></aside>`;
+  const col = c => `<aside class="mp-tl mp-${c}" aria-label="${c === "L" ? "Forces" : "Selected troop"}"><div class="mp-tl-in">${c === "L" ? mpForcesCol(t) : mpCardCol()}</div></aside>`;
   return head + `<div class="mp-wrap">${chair ? mpChairBar(t) : mpViewBar(t)}<div class="mp-main">${col("L")}<div class="mp-board">${chair ? mpHideBar(t) : ""}<div class="mp-stage"><div class="mp-view">${zoom}${pickBar}${svg}</div></div>${legend}</div>${col("R")}</div><div class="mp-foot">${mpTerrCard()}</div></div>`;
 }
 
@@ -291,7 +292,7 @@ function pgMap() {
 function mpHideBar(t) {
   const h = mpHide[t], all = mpTroops(), cabs = CABS(t);
   const chip = (act, attr, key, label, dot, n) => { const off = h.has(key); return `<button class="hb-chip${off ? " off" : ""}" data-a="${act}" ${attr} aria-pressed="${!off}" title="${off ? "Show" : "Hide"} ${esc(label)} troops (your screen only)">${dot ? `<i style="background:${esc(dot)}"></i>` : ""}<b>${esc(label)}</b><small>${n}</small></button>`; };
-  const sides = ["me", "foe"].map(sd => chip("mapHideSide", `data-s="${sd}"`, "side:" + sd, sideLbl(sd).replace(/ Powers$/, ""), sd === "me" ? "var(--me)" : "var(--foe)", all.filter(x => x.side === sd).length)).join("");
+  const sides = ["me", "foe", "ne"].map(sd => chip("mapHideSide", `data-s="${sd}"`, "side:" + sd, sideLbl(sd).replace(/ Powers$/, ""), sd === "me" ? "var(--me)" : sd === "foe" ? "var(--foe)" : "#8a91a0", all.filter(x => x.side === sd).length)).join("");
   const cn = id => all.filter(x => mpCabKey(x) === id).length, none = cn("_");
   const cabChips = cabs.map(c => chip("mapHideCab", `data-c="${c.id}"`, "cab:" + c.id, c.name, c.color, cn(c.id))).join("") + (none ? chip("mapHideCab", 'data-c="_"', "cab:_", "No cabinet", "#6b7380", none) : "");
   const anyOff = h.size > 0;
@@ -343,6 +344,7 @@ function mpChairBar(t) {
 }
 
 const MAPA = {
+  mapFull: () => { const off = document.body.classList.toggle("side-off"); document.body.classList.remove("nav-open"); try { localStorage.setItem("sentinel-side2", off ? "off" : "on"); } catch (e) {} if (typeof syncMenu === "function") syncMenu(); render(); setTimeout(() => mpLabels(document.querySelector(".mapsvg")), 260); },
   mapTool: el => { mpTool = el.dataset.t; mpPtNew = null; mpPt = null; mpDraft = []; mpVx = null; mpCity = null; mpPick.clear(); render(); },
   mapZoom: el => {
     const z = Number(el.dataset.z), g = mpGeo(S.topic); if (!z) { MPV = mpFit(g); render(); return; }
