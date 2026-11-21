@@ -56,6 +56,13 @@ in Reserve, leaves out units the booklet lists as Not Found, and never adds a un
 to the other chairs and onto the map, where its troops carry the cabinet's tag. On the battle map a chair can hide either side or any cabinet
 (this screen only) and select several units to put down with one click.
 
+## Countries on the other pages
+Overview, Forces and Order of Battle have a country switch (All countries, or one of the nine): the page is then drawn from that country's units,
+battles and history only (`VIEW` / `mkView` in `app.js`; each history point keeps per-country totals). Morale is set per country (`api/morale.js`
+keeps `cab: { <id>: value }`); in combat a group fights with the HP-weighted morale of its units' countries, and a unit with no country uses its side's.
+Rules & Formulas has "Sub class stats by country": each country's own ATK / HP / MOV / RNG on top of the base (`d.cabTypes`, kept on each device like the
+sub classes); a country's new units use them and "Update units" gives them to its existing units.
+
 ## War map layout
 Left: the forces of one side at a time (Allied / Central / Neutral switch): units still to put on the map, grouped by cabinet, then that side's
 troops on the map. Right: the card of the selected troop (a neutral unit's card has Join Allied / Join Central). Spain, the USA and the Netherlands

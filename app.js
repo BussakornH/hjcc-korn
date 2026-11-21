@@ -21,6 +21,15 @@ const CABS = (t) => TOPICS[t || S.topic].cabinets || [];
 const cabById = (id, t) => CABS(t).find(c => c.id === id) || null;
 const cabName = id => { const c = cabById(id); return c ? c.name : ""; };
 const cabOpts = sel => `<option value="" ${sel ? "" : "selected"}>No cabinet</option>` + CABS().map(c => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}</option>`).join("");
+/* morale by country (Topic 2): each cabinet has its own figure (50 until the chairs set it). A unit with no cabinet uses its side's morale.
+   A group of units fights with the HP-weighted morale of its members. */
+const hasCabs = () => CABS().length > 0;
+const cabMorale = (c, d = D()) => { const v = d.cabMorale && d.cabMorale[c]; return Number.isFinite(v) ? v : 50; };
+const unitMorale = (u, d = D()) => u.cab && CABS().some(c => c.id === u.cab) ? cabMorale(u.cab, d) : (d.sides[u.side] || d.sides.me).morale;
+function groupMorale(U, side, d = D()) {
+  if (!hasCabs() || !U.length) return d.sides[side] ? d.sides[side].morale : 50;
+  const w = U.map(u => Math.max(0.01, num(u.hp))), t = sum(w); return r2(sum(U.map((u, i) => unitMorale(u, d) * w[i])) / t);
+}
 const cabDot = id => { const c = cabById(id); return c ? `<i class="cab-dot" style="background:${esc(c.color)}" title="${esc(c.full)}"></i>` : ""; };
 const denyForeign = u => toast(`${u.name} belongs to ${u.remote}: only they can change that.`);
 document.documentElement.dataset.role = ROLE;
@@ -166,7 +175,10 @@ const UI = Object.assign({ page: "overview", ovSide: "me", ovMetric: "hp", board
 UI.drawer = null; UI.colMenu = null;
 function saveUI() { try { const { drawer, colMenu, askCb, ...keep } = UI; localStorage.setItem(UIKEY, JSON.stringify(keep)); } catch (e) { /* view state is a convenience only */ } }
 
-const D = () => S.topics[S.topic];
+/* While a page is drawn for one country (the country switch on Overview, Forces and Order of Battle), D() hands back a view of the topic that holds
+   only that country's units, battles and history. It exists only during the drawing: clicks and edits always work on the whole topic. */
+let VIEW = null;
+const D = () => VIEW && VIEW.src === S.topics[S.topic] ? VIEW.d : S.topics[S.topic];
 const byId = id => D().units.find(u => u.id === id);
 const strOf = u => u.maxhp > 0 ? clamp(u.hp / u.maxhp * 100, 0, 100) : 0;
 const lost = u => u.front === "lost" || !(u.hp > 0);
@@ -177,7 +189,7 @@ const frontName = id => (frontById(id) || { name: "Reserve" }).name;
 const CHAIR_SIDES = { t1: { me: "French Army", foe: "British Army", ne: "Neutral" }, t2: { me: "Allied Powers", foe: "Central Powers", ne: "Neutral" } };
 const sideLbl = s => ROLE === "chair" && CHAIR_SIDES[S.topic] ? CHAIR_SIDES[S.topic][s] : D().sides[s].name || (s === "me" ? "My Force" : "Enemy Force");
 const sideWord = s => ROLE === "chair" ? sideLbl(s) : s === "me" ? "own" : "enemy";
-const sideCol = s => s === "me" ? "var(--me)" : "var(--foe)";
+const sideCol = s => s === "me" ? "var(--me)" : s === "ne" ? "#8a91a0" : "var(--foe)";
 const topicLbl = () => { const T = TOPICS[S.topic]; return `Topic ${T.num} · ${T.title} (${T.year})`; };
 const byOrd = (a, b) => (num(a.ord, 1e9) - num(b.ord, 1e9)) || String(a.name).localeCompare(String(b.name), undefined, { numeric: true });
 const TIER_L = { full: "Full strength", good: "75–99%", fair: "50–74%", weak: "10–49%", crit: "Under 10%", lost: "Destroyed" };
@@ -207,9 +219,14 @@ function sideSnap(d, s) {
   return { hp: r2(sum(A.map(u => u.hp))), max: r2(sum(U.map(u => u.maxhp))), n: A.length, atk: r2(sum(A.map(u => eff(u, d.rules).eff))) };
 }
 /* one point per change of the totals: this history is what the "strength over time" charts draw */
+function cabSnap(d, c) {
+  const U = d.units.filter(u => u.cab === c), A = U.filter(u => !lost(u));
+  return { hp: r2(sum(A.map(u => u.hp))), max: r2(sum(U.map(u => u.maxhp))), n: A.length, atk: r2(sum(A.map(u => eff(u, d.rules).eff))) };
+}
 function snap(d) {
   const p = { t: Date.now(), me: sideSnap(d, "me"), foe: sideSnap(d, "foe") }, l = d.hist[d.hist.length - 1];
-  if (l && ["me", "foe"].every(s => ["hp", "max", "n", "atk"].every(k => l[s][k] === p[s][k]))) return;
+  const cs = [...new Set(d.units.map(u => u.cab).filter(Boolean))]; if (cs.length) { p.cab = {}; cs.forEach(c => { p.cab[c] = cabSnap(d, c); }); }   /* per country, for the country switch */
+  if (l && JSON.stringify([l.me, l.foe, l.cab || null]) === JSON.stringify([p.me, p.foe, p.cab || null])) return;
   d.hist.push(p); if (d.hist.length > 500) d.hist.splice(0, d.hist.length - 500);
 }
 function setHp(d, u, v) {
@@ -223,8 +240,10 @@ function moveTo(d, u, f) {
   if (f === "lost") u.hp = 0;
   else if (!(u.hp > 0)) u.hp = Math.min(1, u.maxhp);
 }
+/* a sub class as one country has it: the booklet's base stats with that country's own ATK / HP / MOV / RNG on top (d.cabTypes[cabinet][sub class id]) */
+const typeFor = (d, t, c) => { const o = t && c && d.cabTypes && d.cabTypes[c] && d.cabTypes[c][t.id]; return o ? Object.assign({}, t, o) : t; };
 function mkUnit(d, o) {
-  const t = o.t;
+  const t = o.t ? typeFor(d, o.t, o.cab) : o.t;
   return {
     id: uid("u"), side: o.side, name: o.name, type: t ? t.id : "", tcode: t ? t.code : "", tname: t ? t.name : "Custom unit",
     branch: t ? t.branch : (o.branch || d.branches[0].id),
@@ -414,7 +433,9 @@ function selNow() {
   const d = D(), aS = UI.attSide === "foe" ? "foe" : "me", ok = (id, s) => { const u = d.units.find(x => x.id === id); return u && u.side === s && !lost(u) ? u : null; };
   return { aS, dS: other(aS), A: UI.sel.att.map(id => ok(id, aS)).filter(Boolean), D: UI.sel.def.map(id => ok(id, other(aS))).filter(Boolean) };
 }
-function moraleNow(w) { const s = selNow(), side = w === "att" ? s.aS : s.dS; return UI.cm[w] != null ? UI.cm[w] : D().sides[side].morale; }
+function moraleNow(w) { const s = selNow(), side = w === "att" ? s.aS : s.dS; return UI.cm[w] != null ? UI.cm[w] : groupMorale(w === "att" ? s.A : s.D, side); }
+/* where the morale in the calculator comes from, for its "use ..." link */
+const moraleSrc = (w, s) => { const U = w === "att" ? s.A : s.D, side = w === "att" ? s.aS : s.dS; if (!hasCabs()) return sideLbl(side); const cs = [...new Set(U.map(u => u.cab).filter(c => cabById(c)))]; return cs.length === 1 ? cabName(cs[0]) : cs.length ? "their countries" : sideLbl(side); };
 function currentResult() { const s = selNow(); return s.A.length && s.D.length ? resolve(s.A.map(u => u.id), s.D.map(u => u.id), { am: moraleNow("att"), dm: moraleNow("def"), mult: UI.mult, bonus: UI.bonus, artySafe: UI.arty }) : null; }
 function applyBattle() {
   const r = currentResult(); if (!r) return;
@@ -634,7 +655,9 @@ function render() {
   chrome();
   const P = { map: pgMap, status: pgStatus, control: pgControl, sides: pgSides, overview: pgOverview, forces: pgForces, board: pgBoard, roster: pgRoster, combat: pgCombat, rules: pgRules, morale: pgMorale, settings: pgSettings }[UI.page] || pgOverview;
   const pg = UI.page + "|" + S.topic; if ($("page").dataset.pg !== pg) { $("page").replaceChildren(); $("page").dataset.pg = pg; }   /* a new page starts clean */
-  pagePut(P());
+  const cf = viewCab(); VIEW = cf && VIEW_PAGES.includes(UI.page) ? mkView(cf) : null;
+  let html; try { html = P(); } finally { VIEW = null; }
+  pagePut(html);
   lockPage();
   if (DEL && MINE && MINE[S.topic] && MINE[S.topic].side === "ne") $("page").insertAdjacentHTML("afterbegin", `<div class="lockbar" role="note"><b>Neutral today.</b> You have no force on Day ${MINE[S.topic].day}. The chairs decide when you join a side.</div>`);
   renderDrawer();
@@ -695,6 +718,14 @@ function setMorale(s, raw) {
   d.sides[s].morale = v; addLog(d, `Morale (${sideLbl(s)}): ${fx(o)}% → ${fx(v)}%`, "rules"); save(); render();
   moraleBusy++;
   SentinelAuth.api("POST", "/api/morale", { topic: S.topic, side: s, value: v }).then(r => { if (!r.ok) throw 0; }).catch(() => { toast("Could not save the morale, try again"); }).then(() => { moraleBusy--; loadMorale(); });
+}
+function setCabMorale(c, raw) {
+  if (ROLE !== "chair") { deny(); render(); return; }
+  if (!cabById(c) || (typeof raw === "string" && !raw.trim())) { render(); return; }
+  const d = D(), v = clamp(r2(num(raw, 50)), 0, 100), o = cabMorale(c); if (v === o) { render(); return; }
+  d.cabMorale = Object.assign({}, d.cabMorale, { [c]: v }); addLog(d, `Morale (${cabName(c)}): ${fx(o)}% → ${fx(v)}%`, "rules"); save(); render();
+  moraleBusy++;
+  SentinelAuth.api("POST", "/api/morale", { topic: S.topic, cab: c, value: v }).then(r => { if (!r.ok) throw 0; }).catch(() => { toast("Could not save the morale, try again"); }).then(() => { moraleBusy--; loadMorale(); });
 }
 /* ---------- shared rules ----------
    The rules of each topic (formula, switches, tables, directives) live on the server (api/rules.js) so the Admin's and the chairs' edits reach every calculator.
@@ -757,7 +788,10 @@ function loadMorale() {
     ["t1", "t2"].forEach(t => {
       const d = S.topics[t]; if (!d) return;
       if (DEL) { const v = j.mine && j.mine[t], na = v == null; if (!!MORALE_NA[t] !== na) { MORALE_NA[t] = na; ch = true; } if (!na && d.sides.me.morale !== v) { d.sides.me.morale = v; ch = true; } }
-      else ["me", "foe"].forEach(s => { const v = j[t] && j[t][s]; if (Number.isFinite(v) && d.sides[s].morale !== v) { d.sides[s].morale = v; ch = true; } });
+      else {
+        ["me", "foe"].forEach(s => { const v = j[t] && j[t][s]; if (Number.isFinite(v) && d.sides[s].morale !== v) { d.sides[s].morale = v; ch = true; } });
+        const cm = (j[t] && j[t].cab) || {}; if (JSON.stringify(cm) !== JSON.stringify(d.cabMorale || {})) { d.cabMorale = cm; ch = true; }
+      }
     });
     if (ch) { save(); if (!dragging() && !document.querySelector("#page :focus")) render(); }
   }, () => {});
@@ -768,17 +802,51 @@ function pgMorale() {
     <div class="stat-big">${fx(m)}<small>%</small></div><div class="stat-lbl">Morale of ${esc(sideLbl(s))}</div>
     <div class="fld" style="margin-top:18px"><label for="mo-${s}">Set morale</label><div class="rng"><input type="range" min="0" max="100" step="1" value="${m}" id="mo-${s}r" data-i="pair" data-pair="mo-${s}" data-c="morale" data-s="${s}" aria-label="Morale of ${esc(sideLbl(s))}"><input type="number" min="0" max="100" step="1" value="${fx(m)}" id="mo-${s}" data-i="pair" data-pair="mo-${s}r" data-c="morale" data-s="${s}"></div></div>
     <div class="row-btns">${[-10, -5, 5, 10].map(n => `<button class="btn sm" data-a="moraleStep" data-s="${s}" data-d="${n}">${n > 0 ? "+" : "−"}${Math.abs(n)}</button>`).join("")}</div></div>`; };
+  if (hasCabs()) return pgMoraleCab(d, card);
   return head("Morale", "Set the morale of each side. Delegates can only see their own side's figure, and the combat calculator uses it for the attacker.") +
     (d.rules.useMorale ? "" : '<div class="note">Morale is switched off in Rules &amp; formulas, so it is not part of the damage for now.</div>') +
     `<section class="set-grid">${card("me")}${card("foe")}</section>`;
 }
 
+/* the side a country is on now: the side most of its units are on, else the side it starts on */
+function cabSide(c, d = D()) {
+  const n = { me: 0, foe: 0, ne: 0 }; d.units.forEach(u => { if (u.cab === c && !lost(u) && n[u.side] != null) n[u.side]++; });
+  const best = Object.keys(n).sort((a, b) => n[b] - n[a])[0]; return n[best] ? best : ((cabById(c) || {}).side || "ne");
+}
+/* ---------- the country switch (Overview, Forces, Order of Battle) ---------- */
+const VIEW_PAGES = ["overview", "forces", "board"];
+const viewCab = () => hasCabs() && (UI.cabF === "_" || cabById(UI.cabF)) ? UI.cabF : "";
+function mkView(cf) {
+  const d = S.topics[S.topic], inC = u => cf === "_" ? !cabById(u.cab) : u.cab === cf, units = d.units.filter(inC), ids = new Set(units.map(u => u.id));
+  const hist = cf === "_" ? [] : d.hist.filter(h => h.cab && h.cab[cf]).map(h => ({ t: h.t, me: h.cab[cf], foe: h.cab[cf] }));
+  return { src: d, cab: cf, d: Object.assign({}, d, { units, hist, battles: d.battles.filter(b => b.att.some(x => ids.has(x.id)) || b.def.some(x => ids.has(x.id))) }) };
+}
+function cabBar() {
+  if (!hasCabs()) return ""; const d = S.topics[S.topic], cf = viewCab(), n = f => d.units.filter(u => f(u) && !lost(u)).length, none = n(u => !cabById(u.cab));
+  const chip = (id, label, color, k) => `<button class="cb-chip${cf === id ? " on" : ""}" data-a="cabPick" data-c="${id}" aria-pressed="${cf === id}">${color ? `<i style="background:${esc(color)}"></i>` : ""}<b>${esc(label)}</b><small>${k}</small></button>`;
+  return `<nav class="cab-bar" aria-label="Show one country">${chip("", "All countries", "", n(() => true))}${CABS().map(c => chip(c.id, c.name, c.color, n(u => u.cab === c.id))).join("")}${none ? chip("_", "No country", "#6b7380", none) : ""}</nav>`;
+}
+/* Topic 2: one morale per country. The calculator fights each group with the HP-weighted morale of its countries. */
+function pgMoraleCab(d, sideCard) {
+  const cc = c => { const m = cabMorale(c.id), U = d.units.filter(u => u.cab === c.id), A = U.filter(u => !lost(u)), id = "mo-c-" + c.id; return `<div class="panel mo-c" style="--cc:${esc(c.color)}">
+    <div class="mo-c-h"><i class="cab-dot" style="background:${esc(c.color)}"></i><b>${esc(c.name)}</b><span>${A.length} of ${U.length} units</span></div>
+    <div class="mo-c-v">${fx(m)}<small>%</small></div>
+    <div class="rng"><input type="range" min="0" max="100" step="1" value="${m}" id="${id}r" data-i="pair" data-pair="${id}" data-c="morale" data-cab="${c.id}" aria-label="Morale of ${esc(c.name)}"><input type="number" min="0" max="100" step="1" value="${fx(m)}" id="${id}" data-i="pair" data-pair="${id}r" data-c="morale" data-cab="${c.id}" aria-label="Morale of ${esc(c.name)} in %"></div>
+    <div class="row-btns">${[-10, -5, 5, 10].map(n => `<button class="btn sm" data-a="moraleStep" data-c="${c.id}" data-d="${n}">${n > 0 ? "+" : "−"}${Math.abs(n)}</button>`).join("")}</div></div>`; };
+  const groups = ["me", "foe", "ne"].map(sd => { const cs = CABS().filter(c => cabSide(c.id, d) === sd); return cs.length ? `<section class="mo-g"><h3 class="mo-gh"><span class="sd ${sd}"></span>${esc(sideLbl(sd))}<small>${plural(cs.length, "country", "countries")}</small></h3><div class="mo-grid">${cs.map(cc).join("")}</div></section>` : ""; }).join("");
+  const loose = ["me", "foe"].filter(sd => d.units.some(u => u.side === sd && !cabById(u.cab)));
+  return head("Morale", "Each country has its own morale. In the combat calculator a group of units fights with the morale of its countries (weighted by HP); units with no country use their side's figure below.") +
+    (d.rules.useMorale ? "" : '<div class="note">Morale is switched off in Rules &amp; formulas, so it is not part of the damage for now.</div>') + groups +
+    (loose.length ? `<section class="mo-g"><h3 class="mo-gh">Units with no country<small>side morale</small></h3><section class="set-grid">${loose.map(sideCard).join("")}</section></section>` : "");
+}
+
 /* ---------- OVERVIEW: charts and graphs of the forces ---------- */
 function pgOverview() {
   const d = D();
-  if (!d.units.length) return head("Forces overview", "") + emptyState();
+  if (!d.units.length) return head("Forces overview", "") + cabBar() + (viewCab() ? '<div class="panel"><div class="none">No units for this country yet.</div></div>' : emptyState());
   const s = DEL ? "me" : UI.ovSide, T = tot(s), H = d.hist, M = UI.ovMetric, U = d.units.filter(u => u.side === s), strP = Math.round(pc(T.hp, T.max));
-  const series = [{ name: sideLbl("me"), col: "var(--me)", v: H.map(h => h.me[M]) }].concat(DEL ? [] : [{ name: sideLbl("foe"), col: "var(--foe)", v: H.map(h => h.foe[M]) }]);
+  const vc = VIEW && cabById(VIEW.cab), mo = hasCabs() ? groupMorale(U.filter(u => !lost(u)), s) : d.sides[s].morale;
+  const series = vc ? [{ name: vc.name, col: vc.color, v: H.map(h => h[s][M]) }] : [{ name: sideLbl("me"), col: "var(--me)", v: H.map(h => h.me[M]) }].concat(DEL ? [] : [{ name: sideLbl("foe"), col: "var(--foe)", v: H.map(h => h.foe[M]) }]);
   const brs = d.branches.map(b => ({ b, n: U.filter(u => u.branch === b.id && !lost(u)).length })).filter(x => x.n > 0);
   const last = k => H.slice(-40).map(h => h[s][k]);
   /* change since the first recorded point, S&P-index style: ▲ green when it went the good way */
@@ -797,15 +865,15 @@ function pgOverview() {
   const lastLog = d.log[0] ? `${ago(d.log[0].t)}: ${esc(d.log[0].m)}` : "Nothing recorded yet";
   const lastBattle = d.battles[0] ? `${plural(d.battles.length, "battle")} · last at ${hhmm(d.battles[0].t)}: ${esc(d.battles[0].att[0].name)} v ${esc(d.battles[0].def[0].name)}, ${fx(d.battles[0].dmg)} damage` : "No battles applied yet";
   const OVK = ["ov-trend", "ov-donut", "ov-types", "ov-ready", "ov-act", "ov-front", "ov-battles"];
-  return head("Forces overview", "", (DEL ? "" : seg("ovSide", [["me", `${sideLbl("me")} · ${plural(tot("me").n, "unit")}`], ["foe", `${sideLbl("foe")} · ${plural(tot("foe").n, "unit")}`]], s, "s")) + foldAll(OVK)) + `
+  return head("Forces overview", "", (DEL ? "" : seg("ovSide", [["me", `${sideLbl("me")} · ${plural(tot("me").n, "unit")}`], ["foe", `${sideLbl("foe")} · ${plural(tot("foe").n, "unit")}`]].concat(hasCabs() ? [["ne", `Neutral · ${plural(tot("ne").n, "unit")}`]] : []), s, "s")) + foldAll(OVK)) + cabBar() + `
   <section class="ov-top">
     <div class="panel${foldCls("ov-trend")}">
-      ${ph("ov-trend", "Force strength over time", "Every move, HP change and battle adds a point", seg("ovMetric", [["hp", "Hit points"], ["n", "Units"], ["atk", "Attack"]], M, "m"), `${strP}% combat strength · ${T.n} units in the field · ${T.lost} lost${showMorale() ? ` · morale ${fx(d.sides[s].morale)}%` : ""}`)}
+      ${ph("ov-trend", "Force strength over time", "Every move, HP change and battle adds a point", seg("ovMetric", [["hp", "Hit points"], ["n", "Units"], ["atk", "Attack"]], M, "m"), `${strP}% combat strength · ${T.n} units in the field · ${T.lost} lost${showMorale() ? ` · morale ${fx(mo)}%` : ""}`)}
       <div class="fold-body ov-trend">
         <div class="ov-l">
-          <div class="stat-big">${strP}<small>%</small></div><div class="stat-lbl">Combat strength of ${esc(sideLbl(s))} · ${fx(T.hp)} of ${fx(T.max)} HP</div>
+          <div class="stat-big">${strP}<small>%</small></div><div class="stat-lbl">Combat strength of ${esc(vc ? vc.name : sideLbl(s))} · ${fx(T.hp)} of ${fx(T.max)} HP</div>
           <div class="stat-big">${T.n}</div><div class="stat-lbl">Units in the field · ${T.lost} lost</div>
-          ${showMorale() ? `<div class="stat-big sm">${fx(d.sides[s].morale)}<small>%</small></div><div class="stat-lbl">Morale</div>` : ""}
+          ${showMorale() ? `<div class="stat-big sm">${fx(mo)}<small>%</small></div><div class="stat-lbl">Morale${vc ? " of " + esc(vc.name) : hasCabs() ? " (its countries, by HP)" : ""}</div>` : ""}
           <button class="btn primary" data-a="go" data-p="forces">${ico("layers")} ${ROLE === "chair" ? "Forces" : "My forces"}</button>
         </div>
         <div class="ov-r">
@@ -815,7 +883,7 @@ function pgOverview() {
       </div>
     </div>
     <div class="panel${foldCls("ov-donut")}">
-      ${ph("ov-donut", "Forces by class", `${esc(sideLbl(s))} units still in the field`, "", brs.map(x => `${esc(x.b.name)} ${x.n}`).join(" · ") || "No units in the field")}
+      ${ph("ov-donut", "Forces by class", `${esc(vc ? vc.name : sideLbl(s))} units still in the field`, "", brs.map(x => `${esc(x.b.name)} ${x.n}`).join(" · ") || "No units in the field")}
       <div class="fold-body">
         <div class="donut-box">${CH.donut(brs.map(x => ({ v: x.n, c: x.b.color, t: x.b.name })), String(T.n), "UNITS", { label: "Units by class" })}</div>
         <div class="donut-leg">${brs.map(x => `<div><b>${Math.round(x.n / Math.max(1, T.n) * 100)}%</b><span><i style="background:${x.b.color}"></i>${esc(x.b.name)} · ${x.n}</span></div>`).join("") || '<div class="none">No units in the field.</div>'}</div>
@@ -884,10 +952,10 @@ function battleTable(n) {
 
 /* ---------- MY FORCES: own forces by class and sub class ----------
    Classes fold with UI.fold["mf:<class>"] (open by default); sub classes open with UI.open["mf:<sub class>"] (closed by default). */
-const forceSide = () => UI.rosterSide === "foe" ? "foe" : "me";   /* which side the Forces page shows */
+const forceSide = () => UI.rosterSide === "foe" || (UI.rosterSide === "ne" && hasCabs()) ? UI.rosterSide : "me";   /* which side the Forces page shows */
 function pgForces() {
   const d = D(), fs = forceSide(), U = d.units.filter(u => u.side === fs), T = tot(fs);
-  const sumHtml = `<div class="ro-sum"><div style="--bc:${sideCol(fs)}"><span>${esc(sideLbl(fs))}</span><b>${T.n} <small>of ${T.all}</small></b><span>units in the field</span></div><div><span>Hit points</span><b>${fx(T.hp)} <small>/ ${fx(T.max)}</small></b><span>${Math.round(pc(T.hp, T.max))}% of starting HP, losses included</span></div><div><span>Attack power</span><b>${fx(T.atk)}</b><span>effective, in the field</span></div><div><span>In reserve</span><b>${T.reserve}</b><span>not deployed</span></div><div><span>Lost</span><b>${T.lost}</b><span>destroyed</span></div></div>`;
+  const vc = VIEW && cabById(VIEW.cab), sumHtml = `<div class="ro-sum"><div style="--bc:${vc ? esc(vc.color) : sideCol(fs)}"><span>${esc(vc ? vc.name + " · " + sideLbl(fs) : sideLbl(fs))}</span><b>${T.n} <small>of ${T.all}</small></b><span>units in the field</span></div><div><span>Hit points</span><b>${fx(T.hp)} <small>/ ${fx(T.max)}</small></b><span>${Math.round(pc(T.hp, T.max))}% of starting HP, losses included</span></div><div><span>Attack power</span><b>${fx(T.atk)}</b><span>effective, in the field</span></div><div><span>In reserve</span><b>${T.reserve}</b><span>not deployed</span></div><div><span>Lost</span><b>${T.lost}</b><span>destroyed</span></div></div>`;
   const cls = d.branches.map(b => {
     const BU = U.filter(u => u.branch === b.id), subs = d.types.filter(t => t.branch === b.id), custom = BU.filter(u => !subs.some(t => t.id === u.type));
     const al = BU.filter(u => !lost(u)), hp = sum(al.map(u => u.hp)), mx = sum(al.map(u => u.maxhp)), k = "mf:" + b.id, f = isFold(k);
@@ -901,7 +969,7 @@ function pgForces() {
       </div></section>`;
   }).join("");
   return head(ROLE === "chair" ? "Forces" : "My forces", `Each side's forces by class and sub class: how many units are left, at what strength and HP. Each row shows where its units are. Open a sub class to see and adjust each unit; add sub classes as the chairs announce them. ${bookletFor() ? "Sub class stats come from the chairs' Military Resources Booklet." : "All sub class stats are placeholders until the chairs' booklet arrives."}`,
-    seg("rosterSide", [["me", sideLbl("me")], ["foe", sideLbl("foe")]], fs, "s") + `<button class="btn sm" data-a="mfAll" data-v="0">Collapse all</button><button class="btn sm" data-a="mfAll" data-v="1">Expand all</button><button class="btn sm primary" data-a="addUnits" data-s="${fs}">${ico("plus")} Add units</button>`) + sumHtml + cls;
+    seg("rosterSide", [["me", sideLbl("me")], ["foe", sideLbl("foe")]].concat(hasCabs() ? [["ne", "Neutral"]] : []), fs, "s") + `<button class="btn sm" data-a="mfAll" data-v="0">Collapse all</button><button class="btn sm" data-a="mfAll" data-v="1">Expand all</button><button class="btn sm primary" data-a="addUnits" data-s="${fs}">${ico("plus")} Add units</button>`) + cabBar() + sumHtml + cls;
 }
 function subBlock(t, units, b) {
   const k = "mf:" + (t ? t.id : "custom-" + b.id), open = !!UI.open[k], al = units.filter(u => !lost(u)), hp = sum(al.map(u => u.hp)), mx = sum(al.map(u => u.maxhp)), st = pc(hp, mx);
@@ -973,11 +1041,10 @@ function pgBoard() {
   };
   const neuN = d.units.filter(u => u.side === "ne" && vis(u)).length, neu = ROLE === "chair" && neuN ? `<div class="dead-mid"><div class="panel${foldCls("neu")}">${ph("neu", "Neutral parties", `${plural(neuN, "unit")} · they pick a side later`, "", plural(neuN, "unit"))}<div class="fold-body"><div class="half ne"><div class="half-cols">${d.fronts.map((f, i) => f.id === "lost" ? "" : mk(f, i, "ne")).join("")}</div></div></div></div></div>` : "";
   const board = side === "both" ? `<div class="board split" id="board" data-keep="board">${half("me", false)}<div class="half-mid" role="separator" aria-hidden="true"></div>${half("foe", true)}${neu}${d.fronts.map((f, i) => f.id === "lost" ? deadPanel(mk(f, i, null), d.units.filter(u => u.front === "lost" && vis(u)).length) : "").join("")}</div>` : `<div class="board" id="board" data-keep="board">${d.fronts.map((f, i) => mk(f, i, null)).join("")}</div>`;
-  return head("Order of battle", "Drag a card between Reserve, the front line and Destroyed (on a tablet: press and hold, then drag). Click a card to edit it. Drop cards on the battle tray below to set up an engagement.", DEL ? "" : seg("boardSide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["both", "Both sides"]], side, "s")) + `
+  return head("Order of battle", "Drag a card between Reserve, the front line and Destroyed (on a tablet: press and hold, then drag). Click a card to edit it. Drop cards on the battle tray below to set up an engagement.", DEL ? "" : seg("boardSide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["both", "Both sides"]], side, "s")) + cabBar() + `
   <div class="toolbar">
     <label class="search">${ico("search")}<input id="q" type="search" placeholder="Search units" value="${esc(UI.q)}" data-i="q" aria-label="Search units"></label>
     <div class="chips">${d.branches.map(b => `<button class="chip ${UI.br === b.id ? "on" : ""}" data-a="br" data-b="${b.id}" aria-pressed="${UI.br === b.id}"><i style="background:${b.color}"></i>${esc(b.name)}</button>`).join("")}</div>
-    ${CABS().length ? `<select class="sel" id="cabF" data-c="cabF" aria-label="Show one cabinet"><option value="">All cabinets</option>${CABS().map(c => `<option value="${c.id}" ${cf === c.id ? "selected" : ""}>${esc(c.name)} (${d.units.filter(u => u.cab === c.id && !lost(u)).length})</option>`).join("")}<option value="_" ${cf === "_" ? "selected" : ""}>No cabinet</option></select>` : ""}
     <span class="grow"></span>
     ${bookletFor() ? `<button class="btn primary" data-a="bookAllGo" title="Every cabinet's units from its booklet, at full strength, in Reserve">Load booklet forces</button><button class="btn" data-a="bookPick">Pick cabinets…</button>` : ""}
     <button class="btn" data-a="frontAdd">${ico("plus")} Add front</button>
@@ -1093,8 +1160,8 @@ function pgCombat() {
   const d = D(), R = d.rules, s = selNow(), r = currentResult(), am = moraleNow("att"), dm = moraleNow("def");
   const rng = (id, w, label, v, sub) => `<div class="fld"><label for="${id}">${label}</label><div class="rng"><input type="range" min="0" max="100" step="1" value="${v}" id="${id}r" data-i="pair" data-pair="${id}" data-c="cm" data-w="${w}" aria-label="${label}"><input type="number" id="${id}" min="0" max="100" step="1" value="${fx(v)}" data-i="pair" data-pair="${id}r" data-c="cm" data-w="${w}"></div><small>${sub}</small></div>`;
   const mid = `<div class="panel cb-mid"><div class="panel-h"><div><h3>Conditions</h3><p>Applied to this engagement only</p></div></div>
-    ${R.useMorale ? rng("am", "att", "Attacker morale %", am, UI.cm.att != null ? `<button class="lnk" data-a="cmReset" data-w="att">Use ${esc(sideLbl(s.aS))} morale (${fx(d.sides[s.aS].morale)}%)</button>` : `From ${esc(sideLbl(s.aS))}`) : `<div class="note">Morale is switched off, so it is not part of the damage.</div>`}
-    ${R.useCounter && R.useMorale ? rng("dm", "def", "Defender morale % (counter-attack)", dm, UI.cm.def != null ? `<button class="lnk" data-a="cmReset" data-w="def">Use ${esc(sideLbl(s.dS))} morale (${fx(d.sides[s.dS].morale)}%)</button>` : `From ${esc(sideLbl(s.dS))}`) : ""}
+    ${R.useMorale ? rng("am", "att", "Attacker morale %", am, UI.cm.att != null ? `<button class="lnk" data-a="cmReset" data-w="att">Use ${esc(moraleSrc("att", s))} morale (${fx(groupMorale(s.A, s.aS))}%)</button>` : `From ${esc(moraleSrc("att", s))}`) : `<div class="note">Morale is switched off, so it is not part of the damage.</div>`}
+    ${R.useCounter && R.useMorale ? rng("dm", "def", "Defender morale % (counter-attack)", dm, UI.cm.def != null ? `<button class="lnk" data-a="cmReset" data-w="def">Use ${esc(moraleSrc("def", s))} morale (${fx(groupMorale(s.D, s.dS))}%)</button>` : `From ${esc(moraleSrc("def", s))}`) : ""}
     ${R.useMult ? `<div class="fld"><label for="mult">Situational multiplier</label><div class="mult"><input id="mult" type="number" step="0.05" min="0" value="${UI.mult}" data-c="mult">${[0.5, 0.75, 1, 1.25, 1.5, 2].map(v => `<button class="chip ${num(UI.mult) === v ? "on" : ""}" data-a="multSet" data-v="${v}">×${v}</button>`).join("")}</div><small>Terrain, fortification, surprise: whatever the chairs rule.</small></div>` : ""}
     ${R.useBonus ? `<div class="fld"><label for="bonus">Flat bonus damage</label><input id="bonus" type="number" step="0.5" value="${UI.bonus}" data-c="bonus"></div>` : ""}
     ${[...s.A, ...s.D].some(isArty) ? artyBox(s) : ""}
@@ -1152,6 +1219,16 @@ function ruleSentence(R) {
   p.push(R.autoLost ? "Units at 0 HP move to Destroyed." : "Units at 0 HP stay where they are but count as lost.");
   return p.join(" ");
 }
+/* Topic 2: each country's own copy of the sub class stats, starting from the base. Changing one only changes that country; new units of the country use it,
+   and "Update units" gives the country's units these stats. */
+function cabTypesPanel(d) {
+  const rc = cabById(UI.ruleCab) ? UI.ruleCab : CABS()[0].id, c = cabById(rc), ov = (d.cabTypes && d.cabTypes[rc]) || {};
+  const tabs = `<nav class="cab-bar" aria-label="Country">${CABS().map(x => `<button class="cb-chip${x.id === rc ? " on" : ""}" data-a="ruleCab" data-c="${x.id}" aria-pressed="${x.id === rc}"><i style="background:${esc(x.color)}"></i><b>${esc(x.name)}</b>${d.cabTypes && d.cabTypes[x.id] && Object.keys(d.cabTypes[x.id]).length ? "<small>edited</small>" : ""}</button>`).join("")}</nav>`;
+  const rows = d.types.map(t => { const x = typeFor(d, t, rc), o = ov[t.id] || {}, n = d.units.filter(u => u.type === t.id && u.cab === rc && !u.remote).length;
+    return `<tr${ov[t.id] ? ' class="ct-ed"' : ""}><td><span class="code" style="--bc:${branchById(t.branch).color}">${esc(t.code)}</span></td><td>${esc(t.name)}</td>${["atk", "hp", "mov", "rng"].map(k => `<td class="r"><input class="n${o[k] != null && o[k] !== t[k] ? " ct-ch" : ""}" type="number" min="0" step="0.5" value="${fx(x[k])}" data-c="ctype" data-cab="${rc}" data-id="${t.id}" data-k="${k}" id="ct-${rc}-${t.id}-${k}" aria-label="${esc(c.name)} ${esc(t.code)} ${k}" title="Base: ${fx(t[k])}"></td>`).join("")}<td class="r mono">${n}</td><td class="nowrap"><button class="btn sm" data-a="typePush" data-id="${t.id}" data-cab="${rc}" ${n ? "" : "disabled"} title="Give ${esc(c.name)}'s ${esc(t.name)} units these stats (HP keeps its share)">Update units</button>${ov[t.id] ? ` <button class="btn sm plain" data-a="ctypeReset" data-id="${t.id}" data-cab="${rc}">Base</button>` : ""}</td></tr>`; }).join("");
+  return `<section class="panel"><div class="panel-h"><div><h3>Sub class stats by country</h3><p>Each country starts from the base stats below. Change a number here and only ${esc(c.name)} gets it: its new units use it, and “Update units” gives its existing units the new stats. Changed figures are marked; hover a field to see the base value.</p></div>${Object.keys(ov).length ? `<button class="btn sm" data-a="ctypeResetAll" data-cab="${rc}">Reset ${esc(c.name)} to base</button>` : ""}</div>
+    ${tabs}<div class="tbl-wrap"><table class="tbl types"><thead><tr><th>Code</th><th>Name</th><th class="r">ATK</th><th class="r">HP</th><th class="r">MOV</th><th class="r">RNG</th><th class="r">Units</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
 function pgRules() {
   const d = D(), R = d.rules, F = formula(R);
   const step = (n, title, key, desc, body) => `<li class="pipe-s ${key && !R[key] ? "off" : ""}"><div class="pipe-n">${n}</div><div class="pipe-b"><div class="pipe-h"><h3>${title}</h3>${key ? swBtn(key, R[key]) : ""}</div><p>${desc}</p>${!key || R[key] ? body : ""}</div></li>`;
@@ -1188,7 +1265,8 @@ function pgRules() {
     ${step(7, "Trenches", null, "Each side digs frontline, support and backline trenches on the battle map (Trenches tool). Land troops put on the map arrive in their side's backline trench and advance from there. A unit standing in a trench of its own side is dug in: it takes less damage when attacked.", `<div class="fgrid"><div class="fld span2"><label for="r-tcut">Trench protection</label><input id="r-tcut" class="n" type="number" min="0" max="100" step="5" value="${fx(num(R.trenchCut, 50))}" data-c="rnum" data-k="trenchCut"><small>% less damage taken by a unit in its side's trench (0 turns trenches off in combat).</small></div><div class="fld span2"><label for="r-tkm">Counts as in the trench within</label><input id="r-tkm" class="n" type="number" min="1" max="300" step="5" value="${fx(num(R.trenchKm, 10))}" data-c="rnum" data-k="trenchKm"><small>km of the trench line, measured from the unit's marker.</small></div></div>`)}
   </ol>
   ${dirs}
-  <section class="panel"><div class="panel-h"><div><h3>Sub classes</h3><p>The kinds of unit in each class, with the stats used when you add units. ${bookletFor() ? "These are the chairs' Military Resources Booklet figures (A, D and M as ATK, HP and MOV)." : "<b>All are placeholders until your allocation and the chairs' booklet arrive.</b>"} Editing a sub class does not change units already added; press “Update units” to push the new stats to them.</p></div><button class="btn sm" data-a="typeAdd">${ico("plus")} Add sub class</button></div>
+  ${hasCabs() ? cabTypesPanel(d) : ""}
+  <section class="panel"><div class="panel-h"><div><h3>Sub classes${hasCabs() ? " · base stats" : ""}</h3><p>${hasCabs() ? "The base stats every country starts from (above, each country can have its own). " : ""}The kinds of unit in each class, with the stats used when you add units. ${bookletFor() ? "These are the chairs' Military Resources Booklet figures (A, D and M as ATK, HP and MOV)." : "<b>All are placeholders until your allocation and the chairs' booklet arrive.</b>"} Editing a sub class does not change units already added; press “Update units” to push the new stats to them.</p></div><button class="btn sm" data-a="typeAdd">${ico("plus")} Add sub class</button></div>
     <div class="tbl-wrap"><table class="tbl types"><thead><tr><th>Code</th><th>Name</th><th>Class</th><th class="r">ATK</th><th class="r">HP</th><th class="r">MOV</th><th class="r">RNG</th><th class="r">Units</th><th></th></tr></thead><tbody>${types}</tbody></table></div>
     <div class="row-btns"><button class="btn sm plain" data-a="typesReset">Restore placeholder stats</button></div></section>
   <section class="panel"><div class="panel-h"><div><h3>Classes</h3><p>The parts of the armed forces (Army, Navy, Airforce, Marine). Their colours are used on cards and charts.</p></div><button class="btn sm" data-a="branchAdd">${ico("plus")} Add class</button></div>
@@ -1351,7 +1429,7 @@ function loadBooklets(picks) {
       bk.units.forEach(([code, name, pct, cmd]) => {
         if (!(pct > 0) || d.units.some(x => x.cab === cab && !x.remote && x.name === name)) return;
         const t = d.types.find(x => x.code === code); if (!t) return;
-        d.units.push(mkUnit(d, { side, t, name, front: "reserve", hp: r2(t.hp * pct / 100), cab, notes: cmd ? "Command authority: " + cmd : "" }));
+        d.units.push(mkUnit(d, { side, t, name, front: "reserve", hp: r2(typeFor(d, t, cab).hp * pct / 100), cab, notes: cmd ? "Command authority: " + cmd : "" }));
       });
     });
   }, "data");
@@ -1479,10 +1557,12 @@ const A = {
   mfAll: el => { const on = el.dataset.v === "1", d = D(); d.branches.forEach(b => { if (on) delete UI.fold["mf:" + b.id]; else UI.fold["mf:" + b.id] = true; }); d.types.forEach(t => { if (on) UI.open["mf:" + t.id] = true; else delete UI.open["mf:" + t.id]; }); saveUI(); render(); },
   sample: el => D().units.length ? arm(el, loadSample) : loadSample(),
   bookPick: () => openBooklet(),
+  /* the country switch: a country's own side comes up with it (Overview and Forces show one side at a time) */
+  cabPick: el => { const c = el.dataset.c; UI.cabF = c; if (c && c !== "_") { const sd = cabSide(c, S.topics[S.topic]); UI.ovSide = sd; UI.rosterSide = sd; if (UI.boardSide !== "both" && sd !== "ne") UI.boardSide = sd; } saveUI(); render(); },
   bookAllGo: () => preloadAll(),
   bookGo: () => { const picks = [...document.querySelectorAll("#modal input[data-bk]:checked")].map(i => [i.dataset.bk, ($("bks-" + i.dataset.bk) || {}).value]); if (!picks.length) { toast("Tick at least one cabinet"); return; } closeModal(); loadBooklets(picks); },
   bookAll: () => { const b = [...document.querySelectorAll("#modal input[data-bk]")], all = b.every(i => i.checked); b.forEach(i => { i.checked = !all; }); },
-  moraleStep: el => setMorale(el.dataset.s, D().sides[el.dataset.s].morale + num(el.dataset.d)),
+  moraleStep: el => el.dataset.c ? setCabMorale(el.dataset.c, cabMorale(el.dataset.c) + num(el.dataset.d)) : setMorale(el.dataset.s, D().sides[el.dataset.s].morale + num(el.dataset.d)),
   ovSide: el => { UI.ovSide = el.dataset.s; saveUI(); render(); },
   ovMetric: el => { UI.ovMetric = el.dataset.m; saveUI(); render(); },
   boardSide: el => { UI.boardSide = el.dataset.s; UI.bs = 1; saveUI(); render(); },
@@ -1530,7 +1610,11 @@ const A = {
   rtReset: el => { const t = el.dataset.t; act(`Rule table (${TBL_L[t]}) restored to default`, d => { d.rules[t] = defaultRules()[t]; }, "rules"); },
   typeAdd: () => act("Sub class added: NEW", d => { d.types.push({ id: uid("t"), code: "NEW", name: "New sub class", branch: d.branches[0].id, atk: 0, hp: 1, mov: 0, rng: 0, ph: false }); }, "rules"),
   typeDel: el => arm(el, () => { const t = D().types.find(x => x.id === el.dataset.id); if (!t) return; act(`Sub class removed: ${t.name} (its units keep their stats)`, d => { d.types = d.types.filter(x => x.id !== t.id); d.units.forEach(u => { if (u.type === t.id) u.type = ""; }); }, "rules"); }),
-  typePush: el => { const t = D().types.find(x => x.id === el.dataset.id); if (!t) return; const n = D().units.filter(u => u.type === t.id).length; act(`${t.name}: sub class stats pushed to ${plural(n, "unit")}`, d => { d.units.forEach(u => { if (u.type !== t.id) return; const f = u.maxhp > 0 ? u.hp / u.maxhp : 1; u.atk = t.atk; u.mov = t.mov; u.rng = t.rng; u.maxhp = t.hp; u.hp = r2(t.hp * f); }); }, "rules"); },
+  typePush: el => { const t = D().types.find(x => x.id === el.dataset.id); if (!t) return; const c = el.dataset.cab || "", mine = u => u.type === t.id && !u.remote && (!c || u.cab === c), n = D().units.filter(mine).length;
+    act(`${t.name}: ${c ? cabName(c) + "'s " : ""}sub class stats pushed to ${plural(n, "unit")}`, d => { d.units.forEach(u => { if (!mine(u)) return; const x = typeFor(d, t, u.cab), f = u.maxhp > 0 ? u.hp / u.maxhp : 1; u.atk = x.atk; u.mov = x.mov; u.rng = x.rng; u.maxhp = x.hp; u.hp = r2(x.hp * f); }); }, "rules"); },
+  ruleCab: el => { UI.ruleCab = el.dataset.c; saveUI(); render(); },
+  ctypeReset: el => { const c = el.dataset.cab, t = D().types.find(x => x.id === el.dataset.id); if (!t || !cabById(c)) return; act(`${cabName(c)}: ${t.name} back to the base stats`, d => { if (d.cabTypes && d.cabTypes[c]) delete d.cabTypes[c][t.id]; }, "rules"); },
+  ctypeResetAll: el => { const c = el.dataset.cab; if (!cabById(c)) return; arm(el, () => act(`${cabName(c)}: every sub class back to the base stats`, d => { if (d.cabTypes) delete d.cabTypes[c]; }, "rules")); },
   typesReset: el => arm(el, () => act("Sub classes: placeholder stats restored", d => { TOPICS[S.topic].types.forEach(row => { const p = typeRow(row), t = d.types.find(x => x.code === p.code); if (t) Object.assign(t, { name: p.name, branch: p.branch, atk: p.atk, hp: p.hp, mov: p.mov, rng: p.rng, ph: true }); else d.types.push(p); }); }, "rules")),
   branchAdd: () => act("Class added", d => { d.branches.push({ id: uid("b"), name: "New class", color: "#5b616b" }); }, "rules"),
   branchDel: el => { const b = D().branches.find(x => x.id === el.dataset.id); if (!b || D().branches.length < 2) return; act(`Class removed: ${b.name}`, d => { d.branches = d.branches.filter(x => x.id !== b.id); }, "rules"); },
@@ -1598,6 +1682,12 @@ const C = {
     const v = clamp(r2(num(el.value, D().rules[k])), L[1], L[2]); if (num(D().rules[k]) === v) { el.value = fx(v); return; } act(`Rule changed: ${L[0]} set to ${fx(v)}${L[3]}`, d => { d.rules[k] = v; }, "rules"); },
   rsel: el => { const k = el.dataset.k, v = el.value; if (D().rules[k] === v) return; act(`Rule changed: ${k === "spread" ? "damage spread" : "rounding"} set to ${k === "spread" ? SPREAD[v] : RND[v]}`, d => { d.rules[k] = v; }, "rules"); },
   expr: el => { const v = el.value.trim() || STD_EXPR, o = D().rules.expr; if (v === o) return; act(`Damage formula: ${o} → ${v}`, d => { d.rules.expr = v; }, "rules"); },
+  ctype: el => {
+    const c = el.dataset.cab, t = D().types.find(x => x.id === el.dataset.id), k = el.dataset.k; if (!t || !cabById(c) || !["atk", "hp", "mov", "rng"].includes(k)) return;
+    const cur = typeFor(D(), t, c), v = Math.max(0, r2(num(el.value, cur[k]))); if (k === "hp" && !(v > 0)) { toast("HP must be more than 0"); render(); return; }
+    if (cur[k] === v) return;
+    act(`${cabName(c)}: ${t.code} ${k.toUpperCase()} ${fx(cur[k])} → ${fx(v)}`, d => { d.cabTypes = d.cabTypes || {}; const m = d.cabTypes[c] = d.cabTypes[c] || {}, o = m[t.id] = m[t.id] || {}; o[k] = v; if (["atk", "hp", "mov", "rng"].every(q => o[q] == null || o[q] === t[q])) delete m[t.id]; }, "rules");
+  },
   type: el => {
     const t = D().types.find(x => x.id === el.dataset.id); if (!t) return; const k = el.dataset.k; let v = el.value;
     if (["atk", "hp", "mov", "rng"].includes(k)) v = Math.max(0, r2(num(v, t[k]))); else if (k === "code") v = v.trim().toUpperCase().slice(0, 8) || t.code; else if (k === "name") v = v.trim().slice(0, 40) || t.name;
@@ -1608,11 +1698,11 @@ const C = {
   branch: el => { const b = D().branches.find(x => x.id === el.dataset.id); if (!b) return; const k = el.dataset.k, v = k === "color" ? el.value : (el.value.trim().slice(0, 30) || b.name); if (b[k] === v) return; act(k === "name" ? `Class renamed: ${b.name} → ${v}` : `Class colour changed: ${b.name}`, d => { d.branches.find(x => x.id === b.id)[k] = v; }, "rules"); },
   alloc: el => { const k = el.dataset.k, v = el.value.trim().slice(0, 60); if (D().alloc[k] === v) return; act(`Allocation: ${k === "delegation" ? "delegation" : "portfolio"} set to “${v || "pending"}”`, d => { d.alloc[k] = v; }, "edit"); },
   sideName: el => { const s = el.dataset.s, v = String(el.value).trim().slice(0, 40) || (s === "me" ? "My Force" : "Enemy Force"), o = D().sides[s].name; if (v === o) return; act(`Side renamed: ${o} → ${v}`, d => { d.sides[s].name = v; }, "edit"); },
-  morale: el => setMorale(el.dataset.s, el.value),
+  morale: el => el.dataset.cab ? setCabMorale(el.dataset.cab, el.value) : setMorale(el.dataset.s, el.value),
   frontName: el => { const f = frontById(el.dataset.f), v = el.value.trim().slice(0, 40); if (!f || !v || v === f.name) { render(); return; } act(`Front renamed: ${f.name} → ${v}`, d => { d.fronts.find(x => x.id === f.id).name = v; }, "edit"); },
   cabF: el => { UI.cabF = el.value; saveUI(); render(); },
-  adCab: () => { const c = cabById($("adCab").value); if (c) { const r = document.querySelector(`input[name="adSide"][value="${c.side}"]`); if (r) r.checked = true; } },
-  adType: () => { const t = D().types.find(x => x.id === $("adType").value); if (t) { $("adAtk").value = fx(t.atk); $("adHp").value = fx(t.hp); $("adMov").value = fx(t.mov); $("adRng").value = fx(t.rng); } if ($("adName").dataset.t !== "1") $("adName").value = t ? t.name : "Unit"; addHint(); }
+  adCab: () => { C.adType(); const c = cabById($("adCab").value); if (c) { const r = document.querySelector(`input[name="adSide"][value="${c.side}"]`); if (r) r.checked = true; } },
+  adType: () => { const t = typeFor(D(), D().types.find(x => x.id === $("adType").value), $("adCab") ? $("adCab").value : ""); if (t) { $("adAtk").value = fx(t.atk); $("adHp").value = fx(t.hp); $("adMov").value = fx(t.mov); $("adRng").value = fx(t.rng); } if ($("adName").dataset.t !== "1") $("adName").value = t ? t.name : "Unit"; addHint(); }
 };
 const I = {
   q: el => { UI.q = el.value; render(); },
