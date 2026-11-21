@@ -306,17 +306,27 @@ function mpGroups(side, kind, items, codeOf, row) {
     const allOn = pick && xs.every(u => mpPick.has(u.id)), hid = byCab && kind === "map" && mpHide[t].has("cab:" + k);
     const extra = pick && ROLE !== "delegate" ? `<button class="mp-gx${allOn ? " on" : ""}" data-a="mapPickGrp" data-k="${esc(id)}" aria-pressed="${allOn}" aria-label="${allOn ? "Unselect" : "Select"} all ${esc(br.name)} units" title="${allOn ? "Unselect" : "Select"} every unit in this group">${ico("checks")}</button>`
       : byCab && kind === "map" ? `<button class="mp-gx${hid ? " on" : ""}" data-a="mapHideCab" data-c="${esc(k)}" aria-pressed="${hid}" aria-label="${hid ? "Show" : "Hide"} ${esc(br.name)} troops on the map" title="${hid ? "Show" : "Hide"} ${esc(br.name)} troops on the map (your screen only)">${ico(hid ? "eyeoff" : "eye")}</button>` : "";
-    return `<div class="mp-grp${open ? " open" : ""}${hid ? " hid" : ""}" data-gk="${esc(id)}"><div class="mp-ghr"><button class="mp-gh" data-a="mapGrp" data-k="${esc(id)}" aria-expanded="${open}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><i class="mp-gdot" style="background:${esc(br.color)}"></i><b>${esc(br.name)}</b><small>${xs.length}</small></button>${extra}</div><div class="mp-gb">${xs.map(row).join("")}</div></div>`;
+    return `<div class="mp-grp${open ? " open" : ""}${hid ? " hid" : ""}" data-gk="${esc(id)}"><div class="mp-ghr"><button class="mp-gh" data-a="mapGrp" data-k="${esc(id)}" aria-expanded="${open}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><i class="mp-gdot" style="background:${esc(br.color)}"></i><b>${esc(br.name)}</b><small>${xs.length}</small></button>${extra}</div><div class="mp-gb">${byCab ? mpTypeGroups(id, xs, codeOf, row, pick) : xs.map(row).join("")}</div></div>`;
   }).join("");
 }
 /* The two columns beside the map. Left: the forces of one side at a time (Allied / Central / Neutral switch): the order of battle still to put
    on the map, then that side's troops on it. Right: the card of the troop that is selected (on the map or in the list). */
 const MPSIDES = ["me", "foe", "ne"];
 const mpSideNow = () => MPSIDES.includes(UI.mpSide) ? UI.mpSide : "me";
+/* inside a cabinet: one fold per unit type (INF, ARM, SAP ...), in the order of the sub classes, each with its own "select all" in the order of battle */
+function mpTypeGroups(pid, xs, codeOf, row, pick) {
+  const d = D(), g = new Map(), ord = c => { const i = d.types.findIndex(y => y.code === c); return i < 0 ? 99 : i; };
+  xs.forEach(x => { const c = codeOf(x) || "?"; if (!g.has(c)) g.set(c, []); g.get(c).push(x); });
+  return [...g].sort((a, b) => ord(a[0]) - ord(b[0])).map(([c, ys]) => {
+    const id = pid + "|" + c, open = mpGOpen.has(id), ty = d.types.find(y => y.code === c), allOn = pick && ys.every(u => mpPick.has(u.id));
+    const extra = pick && ROLE !== "delegate" ? `<button class="mp-gx${allOn ? " on" : ""}" data-a="mapPickGrp" data-k="${esc(id)}" aria-pressed="${allOn}" aria-label="${allOn ? "Unselect" : "Select"} all ${esc(ty ? ty.name : c)}" title="${allOn ? "Unselect" : "Select"} every ${esc(ty ? ty.name : c)}">${ico("checks")}</button>` : "";
+    return `<div class="mp-grp mp-sub${open ? " open" : ""}"><div class="mp-ghr"><button class="mp-gh" data-a="mapGrp" data-k="${esc(id)}" aria-expanded="${open}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span class="mp-tc">${esc(c)}</span><b>${esc(ty ? ty.name : c)}</b><small>${ys.length}</small></button>${extra}</div><div class="mp-gb">${ys.map(row).join("")}</div></div>`;
+  }).join("");
+}
 function mpForcesCol(t) {
   const chair = ROLE !== "delegate", d = D(), side = mpSideNow(), aff = mpAffOf(side), picks = mpPickLive();
   const placed = new Set(mpTroops().map(x => x.uid)), free = d.units.filter(u => u.side === side && !lost(u) && !placed.has(u.id)), fn = id => id === "reserve" ? "Reserve" : ((d.fronts.find(f => f.id === id) || {}).name || "Front");
-  const row = u => { const rs = u.front === "reserve", on = picks.has(u.id); return `<div class="trt${rs ? " res" : ""}${on ? " on" : ""}" id="trt-${esc(u.id)}" role="checkbox" aria-checked="${on}" tabindex="0" data-a="mapTrType" data-id="${esc(u.id)}" title="${rs ? "In reserve. " : ""}Click to select (several at once), then click the map. Or drag it onto the map."><span class="trt-ck" aria-hidden="true"></span><img src="symbols/${aff}/${esc(MPCODES.includes(u.tcode) ? u.tcode : "INF")}.png" alt="" draggable="false"><span><b>${esc(u.name)}${rs ? '<em class="trt-tag">Reserve</em>' : ""}</b><i>${rs ? "" : esc(fn(u.front)) + " · "}ATK ${fx(u.atk)} · HP ${fx(u.hp)}/${fx(u.maxhp)} · MOV ${fx(u.mov)}</i></span></div>`; };
+  const row = u => { const rs = u.front === "reserve", on = picks.has(u.id); return `<div class="trt${rs ? " res" : ""}${on ? " on" : ""}" id="trt-${esc(u.id)}" role="checkbox" aria-checked="${on}" tabindex="0" data-a="mapTrType" data-id="${esc(u.id)}" title="${rs ? "In reserve. " : ""}Click to select (several at once), then click the map. Or drag it onto the map."><span class="trt-ck" aria-hidden="true"></span><img src="symbols/${aff}/${esc(MPCODES.includes(u.tcode) ? u.tcode : "INF")}.png" alt="" draggable="false"><span><b>${esc(u.name)}</b><i>${rs ? "" : esc(fn(u.front)) + " · "}ATK ${fx(u.atk)} · HP ${fx(u.hp)}/${fx(u.maxhp)} · MOV ${fx(u.mov)}</i></span></div>`; };
   const act = free.filter(u => u.front !== "reserve"), res = free.filter(u => u.front === "reserve"), mine = free.filter(u => picks.has(u.id)).length;
   const sect = (cls, label, n, body) => `<div class="mp-ob ${cls}"><div class="mp-ob-h"><b>${label}</b><small>${n}</small></div>${body}</div>`;
   const cnt = sd => d.units.filter(u => u.side === sd && !lost(u)).length;

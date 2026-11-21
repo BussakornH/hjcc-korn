@@ -1006,3 +1006,10 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .mp-bar-k { width: 92px; }
 @media (max-width: 560px) { .mp-bar-k { width: auto; } }
 @media (max-width: 900px) { .mp-head [data-a=mapFull] { display: none; } }
+/* unit-type folds inside a cabinet */
+.mp-sub { margin-left: 10px; } .mp-sub + .mp-sub { margin-top: 4px; } .mp-grp > .mp-gb > .mp-sub:first-child { margin-top: 2px; }
+.mp-sub .mp-gh { padding: 6px 8px; border-style: dashed; background: transparent; }
+.mp-sub .mp-gx { width: 30px; } .mp-sub .mp-gx .ic { width: 14px; height: 14px; }
+.mp-tc { flex: none; padding: 1px 5px; border-radius: 5px; background: var(--panel-3); color: var(--ink-2); font: 700 10px/1.5 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .02em; }
+.mp-sub .mp-gb .trt:first-child, .mp-sub .mp-gb .trl-row:first-child { margin-top: 2px; }
+.mp-grp.open > .mp-ghr > .mp-gh .ic { transform: rotate(90deg); }
