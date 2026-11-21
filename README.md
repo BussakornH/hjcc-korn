@@ -51,7 +51,7 @@ When a session ends (12 hours, or a password reset) the next thing the page asks
 
 ## Cabinets (Topic 2)
 Topic 2 has nine cabinets: Spain, Germany, Austria-Hungary, Ottoman, USA, France, Britain, Russia and the Netherlands (`presets.js`, `cabinets`).
-Each has its order of battle from its Military Resources Booklet (`booklets`, keyed by cabinet); "Load booklet forces" loads the ticked cabinets
+Each has its order of battle from its Military Resources Booklet (`booklets`, keyed by cabinet); "Load booklet forces" loads every cabinet in one click ("Pick cabinets…" loads only the ticked ones)
 in Reserve, leaves out units the booklet lists as Not Found, and never adds a unit a cabinet already has. A unit's cabinet (`cab`) travels with it
 to the other chairs and onto the map, where its troops carry the cabinet's tag. On the battle map a chair can hide either side or any cabinet
 (this screen only) and select several units to put down with one click.

@@ -666,7 +666,7 @@ const ph = (k, title, sub, tools = "", fsub) => { const f = isFold(k); return `<
 const foldAll = keys => `<button class="btn sm" data-a="foldAll" data-k="${keys.join(",")}" data-v="1">Collapse all</button><button class="btn sm" data-a="foldAll" data-k="${keys.join(",")}" data-v="0">Expand all</button>`;
 function emptyState() {
   return `<div class="panel empty"><div class="eyebrow">${esc(topicLbl())}</div><h2>No forces recorded yet</h2>
-    <p>Preload every cabinet from the booklets in one click, pick cabinets, or add units by hand.</p>
+    <p>Load every cabinet from the booklets in one click, pick cabinets, or add units by hand.</p>
     <div class="row-btns">${bookletBtn()}<button class="btn ${bookletFor() ? "" : "primary "}lg" data-a="addUnits">${ico("plus")} Add units</button><button class="btn lg" data-a="sample">Load sample forces (demo)</button></div></div>`;
 }
 
@@ -964,7 +964,7 @@ function pgBoard() {
     <div class="chips">${d.branches.map(b => `<button class="chip ${UI.br === b.id ? "on" : ""}" data-a="br" data-b="${b.id}" aria-pressed="${UI.br === b.id}"><i style="background:${b.color}"></i>${esc(b.name)}</button>`).join("")}</div>
     ${CABS().length ? `<select class="sel" id="cabF" data-c="cabF" aria-label="Show one cabinet"><option value="">All cabinets</option>${CABS().map(c => `<option value="${c.id}" ${cf === c.id ? "selected" : ""}>${esc(c.name)} (${d.units.filter(u => u.cab === c.id && !lost(u)).length})</option>`).join("")}<option value="_" ${cf === "_" ? "selected" : ""}>No cabinet</option></select>` : ""}
     <span class="grow"></span>
-    ${bookletFor() ? `<button class="btn primary" data-a="bookAllGo" title="Load every cabinet's booklet units in one go">Preload all booklets</button><button class="btn" data-a="bookPick">Pick cabinets…</button>` : ""}
+    ${bookletFor() ? `<button class="btn primary" data-a="bookAllGo" title="Every cabinet's units from its booklet, at full strength, in Reserve">Load booklet forces</button><button class="btn" data-a="bookPick">Pick cabinets…</button>` : ""}
     <button class="btn" data-a="frontAdd">${ico("plus")} Add front</button>
   </div>
   ${board}
@@ -1195,7 +1195,7 @@ function pgSettings() {
       ${sideF("me")}${sideF("foe")}</div>
     <div class="panel"><div class="panel-h"><div><h3>Fronts</h3><p>The columns of the Order of Battle board. Reserve and Destroyed are fixed.</p></div><button class="btn sm" data-a="frontAdd">${ico("plus")} Add front</button></div>${fronts}</div>
     <div class="panel"><div class="panel-h"><div><h3>Backup &amp; data</h3><p>Everything is saved in this browser on this device after every change. Export a backup before the committee and to move to another device.</p></div></div>
-      <div class="data-btns"><button class="btn primary" data-a="exp">${ico("down")} Export backup</button><button class="btn" data-a="imp" data-need="admin">${ico("up")} Import backup</button><button class="btn" data-a="sample">Load sample forces (demo)</button>${bookletFor() ? `<button class="btn" data-a="bookPick">Load booklet forces</button>` : ""}</div>
+      <div class="data-btns"><button class="btn primary" data-a="exp">${ico("down")} Export backup</button><button class="btn" data-a="imp" data-need="admin">${ico("up")} Import backup</button><button class="btn" data-a="sample">Load sample forces (demo)</button>${bookletFor() ? `<button class="btn" data-a="bookAllGo">Load booklet forces</button>` : ""}</div>
       <div class="data-btns"><button class="btn danger" data-a="clearForces" data-need="admin">Clear forces and history</button><button class="btn danger" data-a="resetTopic" data-need="admin">Reset everything in this topic</button></div>
       <p class="muted" style="font-size:12.5px">“Clear forces and history” keeps your allocation, rules, classes, sub classes and fronts. Both act on ${esc(topicLbl())} only, and Undo brings the data back.</p></div>
   </section>
@@ -1310,7 +1310,7 @@ function loadSample(quiet) {
    A chair ticks the cabinets to load and the side each goes on. A unit the cabinet already has (same name) is not added again. */
 const BOOKS = () => TOPICS[S.topic].booklets || {};
 const bookletFor = () => Object.keys(BOOKS()).length ? true : null;
-const bookletBtn = () => bookletFor() ? `<button class="btn primary lg" data-a="bookAllGo">Preload all booklets</button><button class="btn lg" data-a="bookPick">Pick cabinets…</button>` : "";
+const bookletBtn = () => bookletFor() ? `<button class="btn primary lg" data-a="bookAllGo" title="Every cabinet's units from its booklet, at full strength, in Reserve">Load booklet forces</button><button class="btn lg" data-a="bookPick">Pick cabinets…</button>` : "";
 /* one click: every cabinet's booklet units, each on its own side (the neutrals on the first side, as in the picker); units already there are skipped */
 const preloadAll = () => loadBooklets(CABS().filter(c => BOOKS()[c.id]).map(c => [c.id, c.side === "foe" ? "foe" : "me"]));
 function openBooklet() {
