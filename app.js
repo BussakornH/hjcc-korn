@@ -20,7 +20,7 @@ const foreign = u => !!(u && u.remote);
 const CABS = (t) => TOPICS[t || S.topic].cabinets || [];
 const cabById = (id, t) => CABS(t).find(c => c.id === id) || null;
 const cabName = id => { const c = cabById(id); return c ? c.name : ""; };
-const cabOpts = sel => `<option value="" ${sel ? "" : "selected"}>No cabinet</option>` + CABS().map(c => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}</option>`).join("");
+const cabOpts = sel => `<option value="" ${sel ? "" : "selected"}>No country</option>` + CABS().map(c => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}</option>`).join("");
 /* morale by country (Topic 2): each cabinet has its own figure (50 until the chairs set it). A unit with no cabinet uses its side's morale.
    A group of units fights with the HP-weighted morale of its members. */
 const hasCabs = () => CABS().length > 0;
@@ -1321,8 +1321,8 @@ function renderDrawerRaw() {
       <div class="dr-hp-btns">${[-5, -1, 1, 5].map(v => `<button class="btn sm" data-a="hp" data-id="${u.id}" data-d="${v}">${v > 0 ? "+" : "−"}${Math.abs(v)} HP</button>`).join("")}<button class="btn sm" data-a="hpSet" data-id="${u.id}" data-v="full">Full HP</button><button class="btn sm danger" data-a="hpSet" data-id="${u.id}" data-v="0">Destroyed</button></div></div>
     <div class="dr-form"><div class="fgrid">
       <div class="fld span4"><label for="dr-name">Name</label><input id="dr-name" value="${esc(u.name)}" data-c="uf" data-k="name" maxlength="60"></div>
-      <div class="fld span2" ${DEL ? "hidden" : ""}><label for="dr-side">Side</label><select id="dr-side" data-c="uf" data-k="side"><option value="me" ${u.side === "me" ? "selected" : ""}>${esc(sideLbl("me"))}</option><option value="foe" ${u.side === "foe" ? "selected" : ""}>${esc(sideLbl("foe"))} (enemy)</option><option value="ne" ${u.side === "ne" ? "selected" : ""}>Neutral</option></select></div>
-      ${CABS().length ? `<div class="fld span2"><label for="dr-cab">Cabinet</label><select id="dr-cab" data-c="uf" data-k="cab">${cabOpts(u.cab || "")}</select></div>` : ""}
+      <div class="fld span2" ${DEL ? "hidden" : ""}><label for="dr-side">Side</label><select id="dr-side" data-c="uf" data-k="side"><option value="me" ${u.side === "me" ? "selected" : ""}>${esc(sideLbl("me"))}</option><option value="foe" ${u.side === "foe" ? "selected" : ""}>${esc(sideLbl("foe"))}${ROLE === "chair" ? "" : " (enemy)"}</option><option value="ne" ${u.side === "ne" ? "selected" : ""}>Neutral</option></select></div>
+      ${CABS().length ? `<div class="fld span2"><label for="dr-cab">Country</label><select id="dr-cab" data-c="uf" data-k="cab">${cabOpts(u.cab || "")}</select></div>` : ""}
       <div class="fld span2"><label for="dr-front">Front</label><select id="dr-front" data-c="uf" data-k="front">${frontOpts(u.front)}</select></div>
       <div class="fld span2"><label for="dr-type">Sub class</label><select id="dr-type" data-c="uf" data-k="type">${typeOpts(u.type)}<option value="" ${u.type ? "" : "selected"}>Custom unit</option></select></div>
       <div class="fld span2"><label for="dr-branch">Class</label><select id="dr-branch" data-c="uf" data-k="branch">${d.branches.map(b => `<option value="${b.id}" ${b.id === u.branch ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select></div>
@@ -1345,13 +1345,14 @@ function askText(title, label, val, cb) {
   const i = $("askIn"); if (i) i.select();
 }
 function openAdd(front, side, typeId) {
-  const d = D(), t0 = d.types.find(t => t.id === typeId) || d.types[0];
+  const d = D(), vc = viewCab(), cab0 = hasCabs() ? (vc && vc !== "_" && VIEW_PAGES.includes(UI.page) ? vc : vc === "_" && VIEW_PAGES.includes(UI.page) ? "" : (cabById(UI.lastCab) ? UI.lastCab : "")) : "";
+  const tb = d.types.find(t => t.id === typeId) || d.types[0], t0 = typeFor(d, tb, cab0);
   if (side !== "me" && side !== "foe" && side !== "ne") side = UI.page === "map" ? (UI.mpSide || "me") : (UI.page === "board" && UI.boardSide === "foe") || ((UI.page === "roster" || UI.page === "forces") && UI.rosterSide === "foe") ? "foe" : "me";
   openModal(`<h2>Add units</h2><p class="muted">One card is made per unit. Stats come from the sub class${bookletFor() ? " (the chairs' booklet)" : " (placeholders until your allocation and the chairs' booklet arrive)"} and can be changed below.</p>
   <div class="fgrid">
-    <div class="fld span4" ${DEL ? "hidden" : ""}><span class="lbl">Side</span><div class="radio-seg"><label><input type="radio" name="adSide" value="me" ${side === "me" ? "checked" : ""}>${esc(sideLbl("me"))}</label><label><input type="radio" name="adSide" value="foe" ${side === "foe" ? "checked" : ""}>${esc(sideLbl("foe"))} (enemy)</label><label><input type="radio" name="adSide" value="ne" ${side === "ne" ? "checked" : ""}>Neutral</label></div></div>
-    ${CABS().length ? `<div class="fld span4"><label for="adCab">Cabinet</label><select id="adCab" data-c="adCab">${cabOpts(UI.lastCab || "")}</select></div>` : ""}
-    <div class="fld span2"><label for="adType">Sub class</label><select id="adType" data-c="adType">${typeOpts(t0 ? t0.id : "")}<option value="">Custom unit</option></select></div>
+    <div class="fld span4" ${DEL ? "hidden" : ""}><span class="lbl">Side</span><div class="radio-seg"><label><input type="radio" name="adSide" value="me" ${side === "me" ? "checked" : ""}>${esc(sideLbl("me"))}</label><label><input type="radio" name="adSide" value="foe" ${side === "foe" ? "checked" : ""}>${esc(sideLbl("foe"))}${ROLE === "chair" ? "" : " (enemy)"}</label><label><input type="radio" name="adSide" value="ne" ${side === "ne" ? "checked" : ""}>Neutral</label></div></div>
+    ${CABS().length ? `<div class="fld span4"><label for="adCab">Country</label><select id="adCab" data-c="adCab">${cabOpts(cab0)}</select></div>` : ""}
+    <div class="fld span2"><label for="adType">Sub class</label><select id="adType" data-c="adType">${typeOpts(tb ? tb.id : "")}<option value="">Custom unit</option></select></div>
     <div class="fld"><label for="adQty">How many</label><input id="adQty" type="number" min="1" max="60" step="1" value="1" data-i="adQty"></div>
     <div class="fld"><label for="adFront">Front</label><select id="adFront">${frontOpts(front && front !== "lost" ? front : "reserve", true)}</select></div>
     <div class="fld span4"><label for="adName">Name</label><input id="adName" value="${esc(t0 ? t0.name : "Unit")}" maxlength="50" data-i="adName"><small id="adHint"></small></div>
@@ -1415,7 +1416,7 @@ function openBooklet() {
     return `<tr><td><input type="checkbox" id="bk-${c.id}" data-bk="${c.id}" ${have ? "" : "checked"}></td><td><label for="bk-${c.id}" class="bk-n">${cabDot(c.id)}<b>${esc(c.name)}</b>${c.side === "ne" ? '<span class="muted">neutral</span>' : ""}</label></td><td>${raised} of ${bk.units.length}</td><td>${have ? plural(have, "unit") : '<span class="muted">none yet</span>'}</td><td><select class="sel" id="bks-${c.id}" aria-label="Side for ${esc(c.name)}"><option value="me" ${def === "me" ? "selected" : ""}>${esc(sideLbl("me"))}</option><option value="foe" ${def === "foe" ? "selected" : ""}>${esc(sideLbl("foe"))}</option><option value="ne" ${def === "ne" ? "selected" : ""}>Neutral</option></select></td></tr>`;
   }).join("");
   openModal(`<h2>Load booklet forces</h2><p class="muted">Each cabinet's units from its Military Resources Booklet, at full strength, in Reserve (awaiting deployment). A unit the cabinet already has (same name) is not added twice. Spain, the USA and the Netherlands start Neutral; any cabinet can be put on another side here.</p>
-  <div class="bk-wrap"><table class="rtbl full bk-t"><thead><tr><th><span class="vh-only">Load</span></th><th>Cabinet</th><th>Units</th><th>You have</th><th>Side</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <div class="bk-wrap"><table class="rtbl full bk-t"><thead><tr><th><span class="vh-only">Load</span></th><th>Country</th><th>Units</th><th>You have</th><th>Side</th></tr></thead><tbody>${rows}</tbody></table></div>
   <div class="m-act"><button class="btn plain" data-a="bookAll">Tick all</button><span class="grow"></span><button class="btn" data-a="modalClose">Cancel</button><button class="btn primary" data-a="bookGo">Load ticked cabinets</button></div>`);
 }
 /* picks: [[cabinet id, side]] */
