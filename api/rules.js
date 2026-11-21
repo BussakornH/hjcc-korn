@@ -28,7 +28,8 @@ function clean(r) {
   /* the counter-attack of a defender the attack destroyed (% of its attack), and trenches: % less damage for a unit in its side's trench, and how near (km) counts as in it */
   out.deadCounter = r.deadCounter == null ? 50 : n(r.deadCounter, 0, 100);
   out.trenchCut = r.trenchCut == null ? 50 : n(r.trenchCut, 0, 100);
-  out.trenchKm = r.trenchKm == null ? 30 : n(r.trenchKm, 1, 300);
+  out.trenchKm = r.trenchKm == null ? 10 : n(r.trenchKm, 1, 300);
+  out.trenchKm10 = !!r.trenchKm10;   /* the move from the old 30 km default to 10 km has been made (app.js rulesAdopt) */
   return out;
 }
 module.exports = L.wrap(async (req, res) => {

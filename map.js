@@ -188,7 +188,7 @@ function mpNearOn(q, x, y) {
 /* the trench of the troop's own side it stands in (within the rules' trenchKm), or null. Ships and aircraft are never in a trench. */
 function mpTrenchOf(t, x) {
   if (!x || mpDomain(x.code) !== "land" || typeof LN === "undefined" || !LN || !LN[t]) return null;
-  const g = mpGeo(t), kmU = 111.2 / g.sc, p = mpXY(g, x.lat, x.lon), R = (S.topics[t] && S.topics[t].rules) || {}, km = num(R.trenchKm, 30);
+  const g = mpGeo(t), kmU = 111.2 / g.sc, p = mpXY(g, x.lat, x.lon), R = (S.topics[t] && S.topics[t].rules) || {}, km = num(R.trenchKm, 10);
   let best = null, bd = Infinity;
   LN[t].forEach(l => { if (!isTrench(l) || l.side !== x.side) return; const n = mpNearOn(l.pts.map(a => mpXY(g, a[0], a[1])), p[0], p[1]); if (n.d < bd) { bd = n.d; best = l; } });
   return best && bd * kmU <= km ? best : null;

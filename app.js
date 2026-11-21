@@ -100,7 +100,7 @@ function defaultRules() {
       { min: 50, tDmg: 100, aLoss: 0, note: "Heavy damage" },
       { min: 100, tDmg: 100, aLoss: 0, note: "Wiped out" }],
     useCounter: false, spread: "focus", rounding: "none", autoLost: true,
-    deadCounter: 50, trenchCut: 50, trenchKm: 30,
+    deadCounter: 50, trenchCut: 50, trenchKm: 10,
     dir: { me: [], foe: [] }   /* directives: extra ATK for one side (all units, a class, or a sub class) */
   };
 }
@@ -146,6 +146,7 @@ function migrate(o) {
     const d = o.topics[k], f = newTopic(k);
     Object.keys(f).forEach(key => { if (d[key] === undefined) d[key] = f[key]; });
     d.rules = Object.assign(defaultRules(), d.rules || {});
+    if (d.rules.trenchKm === 30 && !d.rules.trenchKm10) { d.rules.trenchKm = 10; d.rules.trenchKm10 = true; }
     d.branches.forEach(b => { const n = OLD_BRANCH_COL[String(b.color).toLowerCase()]; if (n) b.color = n; });
     d.branches.forEach(b => { if (!/^#[0-9a-f]{3,8}$/i.test(b.color)) b.color = "#8a8f98"; });   /* colours go into style="" as they are: anything in a saved or imported file that is not a plain hex colour is replaced */
     if (!d.fronts.some(x => x.id === "reserve")) d.fronts.unshift(f.fronts[0]);
@@ -702,7 +703,9 @@ function setMorale(s, raw) {
 const RVER = { t1: null, t2: null }, RSYNC = {}, RTOPICS = ["t1", "t2"]; let rulesOk = false, rulesT = 0, rulesBusy = false, rulesFail = false;
 const rulesJson = t => JSON.stringify(S.topics[t].rules);
 function rulesAdopt(t, rules) {
-  const d = S.topics[t], next = Object.assign(defaultRules(), rules), ch = JSON.stringify(next) !== JSON.stringify(d.rules);
+  const d = S.topics[t], next = Object.assign(defaultRules(), rules);
+  if (next.trenchKm === 30 && !next.trenchKm10) { next.trenchKm = 10; next.trenchKm10 = true; }   /* 30 km was the first default and let units far from a trench count as in it: every device reads it as 10 (the next rules save stores that) */
+  const ch = JSON.stringify(next) !== JSON.stringify(d.rules);
   d.rules = next; RSYNC[t] = rulesJson(t);
   /* Undo puts a whole earlier state back. Without this, undoing an HP change made before the new rules arrived would bring the old rules back with it, and send them. */
   if (ch) for (let i = 0; i < UNDO.length; i++) { try { const o = JSON.parse(UNDO[i]); if (o.topics && o.topics[t]) { o.topics[t].rules = next; UNDO[i] = JSON.stringify(o); } } catch (e) { /* leave that step as it is */ } }
@@ -1182,7 +1185,7 @@ function pgRules() {
     ${step(4, "Damage formula", null, "Turns the total effective attack into damage. Pick a preset or write your own.", fbox)}
     ${step(5, "Results chart", "useChart", "Looks the damage up as a % of the defenders' HP and decides how much of it lands and what the attacker loses.", chartT)}
     ${step(6, "Spread and finish", null, "How the damage is shared between several defenders, and what happens at 0 HP.", fin)}
-    ${step(7, "Trenches", null, "Each side digs frontline, support and backline trenches on the battle map (Trenches tool). Land troops put on the map arrive in their side's backline trench and advance from there. A unit standing in a trench of its own side is dug in: it takes less damage when attacked.", `<div class="fgrid"><div class="fld span2"><label for="r-tcut">Trench protection</label><input id="r-tcut" class="n" type="number" min="0" max="100" step="5" value="${fx(num(R.trenchCut, 50))}" data-c="rnum" data-k="trenchCut"><small>% less damage taken by a unit in its side's trench (0 turns trenches off in combat).</small></div><div class="fld span2"><label for="r-tkm">Counts as in the trench within</label><input id="r-tkm" class="n" type="number" min="1" max="300" step="5" value="${fx(num(R.trenchKm, 30))}" data-c="rnum" data-k="trenchKm"><small>km of the trench line, measured from the unit's marker.</small></div></div>`)}
+    ${step(7, "Trenches", null, "Each side digs frontline, support and backline trenches on the battle map (Trenches tool). Land troops put on the map arrive in their side's backline trench and advance from there. A unit standing in a trench of its own side is dug in: it takes less damage when attacked.", `<div class="fgrid"><div class="fld span2"><label for="r-tcut">Trench protection</label><input id="r-tcut" class="n" type="number" min="0" max="100" step="5" value="${fx(num(R.trenchCut, 50))}" data-c="rnum" data-k="trenchCut"><small>% less damage taken by a unit in its side's trench (0 turns trenches off in combat).</small></div><div class="fld span2"><label for="r-tkm">Counts as in the trench within</label><input id="r-tkm" class="n" type="number" min="1" max="300" step="5" value="${fx(num(R.trenchKm, 10))}" data-c="rnum" data-k="trenchKm"><small>km of the trench line, measured from the unit's marker.</small></div></div>`)}
   </ol>
   ${dirs}
   <section class="panel"><div class="panel-h"><div><h3>Sub classes</h3><p>The kinds of unit in each class, with the stats used when you add units. ${bookletFor() ? "These are the chairs' Military Resources Booklet figures (A, D and M as ATK, HP and MOV)." : "<b>All are placeholders until your allocation and the chairs' booklet arrive.</b>"} Editing a sub class does not change units already added; press “Update units” to push the new stats to them.</p></div><button class="btn sm" data-a="typeAdd">${ico("plus")} Add sub class</button></div>

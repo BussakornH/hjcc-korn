@@ -65,7 +65,7 @@ load as Neutral. The Combat Calculator's "War map" button opens the map with the
 On the battle map the Trenches tool lets a chair dig trenches for either side: frontline, support and backline (any number of each; lines and
 trenches together stop at 40 per map). They are battle lines with `kind: "trench"`, a `side` and a `tier`, saved by `api/lines.js`.
 Land troops put on the map go to their side's backline trench nearest the click, spread along it; ships and aircraft, and a side with no
-backline trench yet, go where the chair clicked. A unit whose marker is within the rules' `trenchKm` (30 km) of a trench of its own side is dug in:
+backline trench yet, go where the chair clicked. A unit whose marker is within the rules' `trenchKm` (10 km) of a trench of its own side is dug in:
 it takes `trenchCut` (50%) less damage when attacked. Both numbers are on Rules & Formulas (step 7) and shared like the other rules.
 
 ## Rendering
