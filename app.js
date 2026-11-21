@@ -702,7 +702,7 @@ const ph = (k, title, sub, tools = "", fsub) => { const f = isFold(k); return `<
 const foldAll = keys => `<button class="btn sm" data-a="foldAll" data-k="${keys.join(",")}" data-v="1">Collapse all</button><button class="btn sm" data-a="foldAll" data-k="${keys.join(",")}" data-v="0">Expand all</button>`;
 function emptyState() {
   return `<div class="panel empty"><div class="eyebrow">${esc(topicLbl())}</div><h2>No forces recorded yet</h2>
-    <p>Load every cabinet from the booklets in one click, pick cabinets, or add units by hand.</p>
+    <p>Load every country from the booklets in one click, pick countries, or add units by hand.</p>
     <div class="row-btns">${bookletBtn()}<button class="btn ${bookletFor() ? "" : "primary "}lg" data-a="addUnits">${ico("plus")} Add units</button><button class="btn lg" data-a="sample">Load sample forces (demo)</button></div></div>`;
 }
 
@@ -868,12 +868,12 @@ function pgOverview() {
   return head("Forces overview", "", (DEL ? "" : seg("ovSide", [["me", `${sideLbl("me")} · ${plural(tot("me").n, "unit")}`], ["foe", `${sideLbl("foe")} · ${plural(tot("foe").n, "unit")}`]].concat(hasCabs() ? [["ne", `Neutral · ${plural(tot("ne").n, "unit")}`]] : []), s, "s")) + foldAll(OVK)) + cabBar() + `
   <section class="ov-top">
     <div class="panel${foldCls("ov-trend")}">
-      ${ph("ov-trend", "Force strength over time", "Every move, HP change and battle adds a point", seg("ovMetric", [["hp", "Hit points"], ["n", "Units"], ["atk", "Attack"]], M, "m"), `${strP}% combat strength · ${T.n} units in the field · ${T.lost} lost${showMorale() ? ` · morale ${fx(mo)}%` : ""}`)}
+      ${ph("ov-trend", "Force strength over time", "Every move, HP change and battle adds a point", seg("ovMetric", [["hp", "Hit points"], ["n", "Units"], ["atk", "Attack"]], M, "m"), `${strP}% combat strength · ${T.n} units in the field · ${T.lost} lost${showMorale() ? ` · morale ${fx(Math.round(mo))}%` : ""}`)}
       <div class="fold-body ov-trend">
         <div class="ov-l">
           <div class="stat-big">${strP}<small>%</small></div><div class="stat-lbl">Combat strength of ${esc(vc ? vc.name : sideLbl(s))} · ${fx(T.hp)} of ${fx(T.max)} HP</div>
           <div class="stat-big">${T.n}</div><div class="stat-lbl">Units in the field · ${T.lost} lost</div>
-          ${showMorale() ? `<div class="stat-big sm">${fx(mo)}<small>%</small></div><div class="stat-lbl">Morale${vc ? " of " + esc(vc.name) : hasCabs() ? " (its countries, by HP)" : ""}</div>` : ""}
+          ${showMorale() ? `<div class="stat-big sm">${fx(Math.round(mo))}<small>%</small></div><div class="stat-lbl">Morale${vc ? " of " + esc(vc.name) : hasCabs() ? " (its countries, by HP)" : ""}</div>` : ""}
           <button class="btn primary" data-a="go" data-p="forces">${ico("layers")} ${ROLE === "chair" ? "Forces" : "My forces"}</button>
         </div>
         <div class="ov-r">
@@ -1039,14 +1039,14 @@ function pgBoard() {
     const live = d.fronts.map((f, i) => [f, i]).filter(x => x[0].id !== "lost"), order = flip ? live.slice().reverse() : live;
     return `<div class="half ${sd}"><header class="half-h"><b>${esc(sideLbl(sd))}</b></header><div class="half-cols">${order.map(x => mk(x[0], x[1], sd)).join("")}</div></div>`;
   };
-  const neuN = d.units.filter(u => u.side === "ne" && vis(u)).length, neu = ROLE === "chair" && neuN ? `<div class="dead-mid"><div class="panel${foldCls("neu")}">${ph("neu", "Neutral parties", `${plural(neuN, "unit")} · they pick a side later`, "", plural(neuN, "unit"))}<div class="fold-body"><div class="half ne"><div class="half-cols">${d.fronts.map((f, i) => f.id === "lost" ? "" : mk(f, i, "ne")).join("")}</div></div></div></div></div>` : "";
+  const neuN = d.units.filter(u => u.side === "ne" && vis(u)).length, neu = ROLE === "chair" && neuN ? `<div class="dead-mid neu-mid"><div class="panel${foldCls("neu")}">${ph("neu", "Neutral parties", `${plural(neuN, "unit")} · they pick a side later`, "", plural(neuN, "unit"))}<div class="fold-body"><div class="half ne"><div class="half-cols">${d.fronts.map((f, i) => f.id === "lost" ? "" : mk(f, i, "ne")).join("")}</div></div></div></div></div>` : "";
   const board = side === "both" ? `<div class="board split" id="board" data-keep="board">${half("me", false)}<div class="half-mid" role="separator" aria-hidden="true"></div>${half("foe", true)}${neu}${d.fronts.map((f, i) => f.id === "lost" ? deadPanel(mk(f, i, null), d.units.filter(u => u.front === "lost" && vis(u)).length) : "").join("")}</div>` : `<div class="board" id="board" data-keep="board">${d.fronts.map((f, i) => mk(f, i, null)).join("")}</div>`;
   return head("Order of battle", "Drag a card between Reserve, the front line and Destroyed (on a tablet: press and hold, then drag). Click a card to edit it. Drop cards on the battle tray below to set up an engagement.", DEL ? "" : seg("boardSide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["both", "Both sides"]], side, "s")) + cabBar() + `
   <div class="toolbar">
     <label class="search">${ico("search")}<input id="q" type="search" placeholder="Search units" value="${esc(UI.q)}" data-i="q" aria-label="Search units"></label>
     <div class="chips">${d.branches.map(b => `<button class="chip ${UI.br === b.id ? "on" : ""}" data-a="br" data-b="${b.id}" aria-pressed="${UI.br === b.id}"><i style="background:${b.color}"></i>${esc(b.name)}</button>`).join("")}</div>
     <span class="grow"></span>
-    ${bookletFor() ? `<button class="btn primary" data-a="bookAllGo" title="Every cabinet's units from its booklet, at full strength, in Reserve">Load booklet forces</button><button class="btn" data-a="bookPick">Pick cabinets…</button>` : ""}
+    ${bookletFor() ? `<button class="btn primary" data-a="bookAllGo" title="Every country's units from its booklet, at full strength, in Reserve">Load booklet forces</button><button class="btn" data-a="bookPick">Pick countries…</button>` : ""}
     <button class="btn" data-a="frontAdd">${ico("plus")} Add front</button>
   </div>
   ${board}
@@ -1160,8 +1160,8 @@ function pgCombat() {
   const d = D(), R = d.rules, s = selNow(), r = currentResult(), am = moraleNow("att"), dm = moraleNow("def");
   const rng = (id, w, label, v, sub) => `<div class="fld"><label for="${id}">${label}</label><div class="rng"><input type="range" min="0" max="100" step="1" value="${v}" id="${id}r" data-i="pair" data-pair="${id}" data-c="cm" data-w="${w}" aria-label="${label}"><input type="number" id="${id}" min="0" max="100" step="1" value="${fx(v)}" data-i="pair" data-pair="${id}r" data-c="cm" data-w="${w}"></div><small>${sub}</small></div>`;
   const mid = `<div class="panel cb-mid"><div class="panel-h"><div><h3>Conditions</h3><p>Applied to this engagement only</p></div></div>
-    ${R.useMorale ? rng("am", "att", "Attacker morale %", am, UI.cm.att != null ? `<button class="lnk" data-a="cmReset" data-w="att">Use ${esc(moraleSrc("att", s))} morale (${fx(groupMorale(s.A, s.aS))}%)</button>` : `From ${esc(moraleSrc("att", s))}`) : `<div class="note">Morale is switched off, so it is not part of the damage.</div>`}
-    ${R.useCounter && R.useMorale ? rng("dm", "def", "Defender morale % (counter-attack)", dm, UI.cm.def != null ? `<button class="lnk" data-a="cmReset" data-w="def">Use ${esc(moraleSrc("def", s))} morale (${fx(groupMorale(s.D, s.dS))}%)</button>` : `From ${esc(moraleSrc("def", s))}`) : ""}
+    ${R.useMorale ? rng("am", "att", "Attacker morale %", am, UI.cm.att != null ? `<button class="lnk" data-a="cmReset" data-w="att">Use ${esc(moraleSrc("att", s))} morale (${fx(Math.round(groupMorale(s.A, s.aS)))}%)</button>` : `From ${esc(moraleSrc("att", s))}`) : `<div class="note">Morale is switched off, so it is not part of the damage.</div>`}
+    ${R.useCounter && R.useMorale ? rng("dm", "def", "Defender morale % (counter-attack)", dm, UI.cm.def != null ? `<button class="lnk" data-a="cmReset" data-w="def">Use ${esc(moraleSrc("def", s))} morale (${fx(Math.round(groupMorale(s.D, s.dS)))}%)</button>` : `From ${esc(moraleSrc("def", s))}`) : ""}
     ${R.useMult ? `<div class="fld"><label for="mult">Situational multiplier</label><div class="mult"><input id="mult" type="number" step="0.05" min="0" value="${UI.mult}" data-c="mult">${[0.5, 0.75, 1, 1.25, 1.5, 2].map(v => `<button class="chip ${num(UI.mult) === v ? "on" : ""}" data-a="multSet" data-v="${v}">×${v}</button>`).join("")}</div><small>Terrain, fortification, surprise: whatever the chairs rule.</small></div>` : ""}
     ${R.useBonus ? `<div class="fld"><label for="bonus">Flat bonus damage</label><input id="bonus" type="number" step="0.5" value="${UI.bonus}" data-c="bonus"></div>` : ""}
     ${[...s.A, ...s.D].some(isArty) ? artyBox(s) : ""}
@@ -1247,7 +1247,7 @@ function pgRules() {
   const fin = `<div class="fgrid"><div class="fld span2"><label for="r-spread">Spread over several defenders</label><select id="r-spread" data-c="rsel" data-k="spread">${Object.entries(SPREAD).map(([k, l]) => `<option value="${k}" ${R.spread === k ? "selected" : ""}>${l}</option>`).join("")}</select><small>Damage is spread ${SPREAD_S[R.spread]}.</small></div><div class="fld span2"><label for="r-round">Rounding of damage</label><select id="r-round" data-c="rsel" data-k="rounding">${Object.entries(RND).map(([k, l]) => `<option value="${k}" ${R.rounding === k ? "selected" : ""}>${l[0].toUpperCase() + l.slice(1)}</option>`).join("")}</select></div></div>
     <div class="terms">${term("useCounter", "Counter-attack", "The defenders strike back at the same time with the same formula (using their morale, no multiplier or bonus). A defender wiped out by the attack still strikes back, at the share set below.")}${term("autoLost", "Move units at 0 HP to Destroyed", "When off, a unit at 0 HP stays on its front but counts as lost.")}</div>
     ${R.useCounter ? `<div class="fgrid"><div class="fld span2"><label for="r-dead">Counter-attack of a destroyed defender</label><input id="r-dead" class="n" type="number" min="0" max="100" step="5" value="${fx(num(R.deadCounter, 50))}" data-c="rnum" data-k="deadCounter"><small>% of its attack. A defender the attack wipes out still strikes back with this share (0 turns it off).</small></div></div>` : ""}`;
-  const types = d.types.map(t => { const n = d.units.filter(u => u.type === t.id).length; return `<tr><td><input class="in code-in" value="${esc(t.code)}" data-c="type" data-id="${t.id}" data-k="code" id="ty-${t.id}-code" maxlength="8" aria-label="Code"></td><td><input class="in" value="${esc(t.name)}" data-c="type" data-id="${t.id}" data-k="name" id="ty-${t.id}-name" maxlength="40" aria-label="Name">${t.ph ? '<span class="tag-ph">PLACEHOLDER</span>' : ""}</td><td><select class="in" data-c="type" data-id="${t.id}" data-k="branch" id="ty-${t.id}-branch" aria-label="Branch">${d.branches.map(b => `<option value="${b.id}" ${b.id === t.branch ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select></td>${["atk", "hp", "mov", "rng"].map(k => `<td class="r"><input class="n" type="number" min="0" step="0.5" value="${fx(t[k])}" data-c="type" data-id="${t.id}" data-k="${k}" id="ty-${t.id}-${k}" aria-label="${k}"></td>`).join("")}<td class="r mono">${n}</td><td class="nowrap"><button class="btn sm" data-a="typePush" data-id="${t.id}" ${n ? "" : "disabled"} title="Give every unit of this sub class these stats (HP keeps its share)">Update units</button> <button class="icon-btn sm" data-a="typeDel" data-id="${t.id}" aria-label="Delete sub class">${ico("trash")}</button></td></tr>`; }).join("");
+  const types = d.types.map(t => { const n = d.units.filter(u => u.type === t.id).length; return `<tr><td><input class="in code-in" value="${esc(t.code)}" data-c="type" data-id="${t.id}" data-k="code" id="ty-${t.id}-code" maxlength="8" aria-label="Code"></td><td><input class="in" value="${esc(t.name)}" data-c="type" data-id="${t.id}" data-k="name" id="ty-${t.id}-name" maxlength="40" aria-label="Name">${t.ph && !bookletFor() ? '<span class="tag-ph">PLACEHOLDER</span>' : ""}</td><td><select class="in" data-c="type" data-id="${t.id}" data-k="branch" id="ty-${t.id}-branch" aria-label="Branch">${d.branches.map(b => `<option value="${b.id}" ${b.id === t.branch ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select></td>${["atk", "hp", "mov", "rng"].map(k => `<td class="r"><input class="n" type="number" min="0" step="0.5" value="${fx(t[k])}" data-c="type" data-id="${t.id}" data-k="${k}" id="ty-${t.id}-${k}" aria-label="${k}"></td>`).join("")}<td class="r mono">${n}</td><td class="nowrap"><button class="btn sm" data-a="typePush" data-id="${t.id}" ${n ? "" : "disabled"} title="Give every unit of this sub class these stats (HP keeps its share)">Update units</button> <button class="icon-btn sm" data-a="typeDel" data-id="${t.id}" aria-label="Delete sub class">${ico("trash")}</button></td></tr>`; }).join("");
   const dside = UI.ruleSide === "foe" ? "foe" : "me", drows = ((R.dir && R.dir[dside]) || []);
   const dopt = cur => `<option value="*" ${cur === "*" ? "selected" : ""}>All units</option>` + d.branches.map(b => `<option value="b:${b.id}" ${cur === "b:" + b.id ? "selected" : ""}>All ${esc(b.name)}</option>`).join("") + d.types.map(t => `<option value="c:${esc(t.code)}" ${cur === "c:" + t.code ? "selected" : ""}>${esc(t.name)} (${esc(t.code)})</option>`).join("");
   const dirs = `<section class="panel"><div class="panel-h"><div><h3>Directives by side</h3><p>Standing orders for one side only, such as +2 ATK to its standard infantry for a new rifle. They add to the ATK on the card in every battle, and the working shows them.</p></div>${seg("ruleSide", [["me", sideLbl("me")], ["foe", sideLbl("foe")]], dside, "s")}</div>
@@ -1268,7 +1268,7 @@ function pgRules() {
   ${hasCabs() ? cabTypesPanel(d) : ""}
   <section class="panel"><div class="panel-h"><div><h3>Sub classes${hasCabs() ? " · base stats" : ""}</h3><p>${hasCabs() ? "The base stats every country starts from (above, each country can have its own). " : ""}The kinds of unit in each class, with the stats used when you add units. ${bookletFor() ? "These are the chairs' Military Resources Booklet figures (A, D and M as ATK, HP and MOV)." : "<b>All are placeholders until your allocation and the chairs' booklet arrive.</b>"} Editing a sub class does not change units already added; press “Update units” to push the new stats to them.</p></div><button class="btn sm" data-a="typeAdd">${ico("plus")} Add sub class</button></div>
     <div class="tbl-wrap"><table class="tbl types"><thead><tr><th>Code</th><th>Name</th><th>Class</th><th class="r">ATK</th><th class="r">HP</th><th class="r">MOV</th><th class="r">RNG</th><th class="r">Units</th><th></th></tr></thead><tbody>${types}</tbody></table></div>
-    <div class="row-btns"><button class="btn sm plain" data-a="typesReset">Restore placeholder stats</button></div></section>
+    <div class="row-btns"><button class="btn sm plain" data-a="typesReset">${bookletFor() ? "Restore booklet stats" : "Restore placeholder stats"}</button></div></section>
   <section class="panel"><div class="panel-h"><div><h3>Classes</h3><p>The parts of the armed forces (Army, Navy, Airforce, Marine). Their colours are used on cards and charts.</p></div><button class="btn sm" data-a="branchAdd">${ico("plus")} Add class</button></div>
     <div class="br-list">${d.branches.map(b => { const n = d.units.filter(u => u.branch === b.id).length; return `<div class="br-row"><input type="color" value="${esc(b.color)}" data-c="branch" data-id="${b.id}" data-k="color" aria-label="Colour of ${esc(b.name)}"><input class="in" value="${esc(b.name)}" data-c="branch" data-id="${b.id}" data-k="name" id="br-${b.id}" maxlength="30" aria-label="Class name"><span class="muted">${plural(n, "unit")}</span><button class="icon-btn sm" data-a="branchDel" data-id="${b.id}" ${n ? "disabled title=\"In use\"" : ""} aria-label="Delete class">${ico("trash")}</button></div>`; }).join("")}</div></section>`;
 }
@@ -1403,10 +1403,10 @@ function loadSample(quiet) {
 }
 /* each cabinet's order of battle from its booklet (presets.js, topic 2): named units at the booklet's strength, in Reserve until deployed.
    A unit the booklet lists as "Not Found" (0%) is not raised yet, so it is left out rather than put on the books as already destroyed.
-   A chair ticks the cabinets to load and the side each goes on. A unit the cabinet already has (same name) is not added again. */
+   A chair ticks the cabinets to load and the side each goes on. A unit the country already has (same name) is not added again. */
 const BOOKS = () => TOPICS[S.topic].booklets || {};
 const bookletFor = () => Object.keys(BOOKS()).length ? true : null;
-const bookletBtn = () => bookletFor() ? `<button class="btn primary lg" data-a="bookAllGo" title="Every cabinet's units from its booklet, at full strength, in Reserve">Load booklet forces</button><button class="btn lg" data-a="bookPick">Pick cabinets…</button>` : "";
+const bookletBtn = () => bookletFor() ? `<button class="btn primary lg" data-a="bookAllGo" title="Every country's units from its booklet, at full strength, in Reserve">Load booklet forces</button><button class="btn lg" data-a="bookPick">Pick countries…</button>` : "";
 /* one click: every cabinet's booklet units, each on its own side (the neutrals on the first side, as in the picker); units already there are skipped */
 const preloadAll = () => loadBooklets(CABS().filter(c => BOOKS()[c.id]).map(c => [c.id, c.side === "foe" || c.side === "ne" ? c.side : "me"]));
 function openBooklet() {
@@ -1415,15 +1415,15 @@ function openBooklet() {
     const bk = B[c.id], raised = bk.units.filter(u => u[2] > 0).length, have = d.units.filter(u => u.cab === c.id && !u.remote).length, def = c.side === "foe" || c.side === "ne" ? c.side : "me";
     return `<tr><td><input type="checkbox" id="bk-${c.id}" data-bk="${c.id}" ${have ? "" : "checked"}></td><td><label for="bk-${c.id}" class="bk-n">${cabDot(c.id)}<b>${esc(c.name)}</b>${c.side === "ne" ? '<span class="muted">neutral</span>' : ""}</label></td><td>${raised} of ${bk.units.length}</td><td>${have ? plural(have, "unit") : '<span class="muted">none yet</span>'}</td><td><select class="sel" id="bks-${c.id}" aria-label="Side for ${esc(c.name)}"><option value="me" ${def === "me" ? "selected" : ""}>${esc(sideLbl("me"))}</option><option value="foe" ${def === "foe" ? "selected" : ""}>${esc(sideLbl("foe"))}</option><option value="ne" ${def === "ne" ? "selected" : ""}>Neutral</option></select></td></tr>`;
   }).join("");
-  openModal(`<h2>Load booklet forces</h2><p class="muted">Each cabinet's units from its Military Resources Booklet, at full strength, in Reserve (awaiting deployment). A unit the cabinet already has (same name) is not added twice. Spain, the USA and the Netherlands start Neutral; any cabinet can be put on another side here.</p>
+  openModal(`<h2>Load booklet forces</h2><p class="muted">Each country's units from its Military Resources Booklet, at full strength, in Reserve (awaiting deployment). A unit the country already has (same name) is not added twice. Spain, the USA and the Netherlands start Neutral; any cabinet can be put on another side here.</p>
   <div class="bk-wrap"><table class="rtbl full bk-t"><thead><tr><th><span class="vh-only">Load</span></th><th>Country</th><th>Units</th><th>You have</th><th>Side</th></tr></thead><tbody>${rows}</tbody></table></div>
-  <div class="m-act"><button class="btn plain" data-a="bookAll">Tick all</button><span class="grow"></span><button class="btn" data-a="modalClose">Cancel</button><button class="btn primary" data-a="bookGo">Load ticked cabinets</button></div>`);
+  <div class="m-act"><button class="btn plain" data-a="bookAll">Tick all</button><span class="grow"></span><button class="btn" data-a="modalClose">Cancel</button><button class="btn primary" data-a="bookGo">Load ticked countries</button></div>`);
 }
 /* picks: [[cabinet id, side]] */
 function loadBooklets(picks) {
   const B = BOOKS(), d0 = D(); let n = 0, dup = 0, absent = 0; const done = [];
   picks.forEach(([cab, side]) => { const bk = B[cab]; if (!bk) return; let k = 0; bk.units.forEach(u => { if (!(u[2] > 0)) { absent++; return; } if (d0.units.some(x => x.cab === cab && !x.remote && x.name === u[1])) { dup++; return; } k++; }); n += k; if (k) done.push(`${cabName(cab)} (${k}, ${sideLbl(side)})`); });
-  if (!n) { toast(dup ? "Those cabinets are already loaded" : "Nothing to load"); return; }
+  if (!n) { toast(dup ? "Those countries are already loaded" : "Nothing to load"); return; }
   act(`Booklet forces loaded: ${done.join(", ")}${absent ? `; ${absent} not found, not added` : ""}${dup ? `; ${dup} already there` : ""}`, d => {
     picks.forEach(([cab, side]) => {
       const bk = B[cab]; if (!bk) return; side = side === "foe" || side === "ne" ? side : "me";
@@ -1561,7 +1561,7 @@ const A = {
   /* the country switch: a country's own side comes up with it (Overview and Forces show one side at a time) */
   cabPick: el => { const c = el.dataset.c; UI.cabF = c; if (c && c !== "_") { const sd = cabSide(c, S.topics[S.topic]); UI.ovSide = sd; UI.rosterSide = sd; if (UI.boardSide !== "both" && sd !== "ne") UI.boardSide = sd; } saveUI(); render(); },
   bookAllGo: () => preloadAll(),
-  bookGo: () => { const picks = [...document.querySelectorAll("#modal input[data-bk]:checked")].map(i => [i.dataset.bk, ($("bks-" + i.dataset.bk) || {}).value]); if (!picks.length) { toast("Tick at least one cabinet"); return; } closeModal(); loadBooklets(picks); },
+  bookGo: () => { const picks = [...document.querySelectorAll("#modal input[data-bk]:checked")].map(i => [i.dataset.bk, ($("bks-" + i.dataset.bk) || {}).value]); if (!picks.length) { toast("Tick at least one country"); return; } closeModal(); loadBooklets(picks); },
   bookAll: () => { const b = [...document.querySelectorAll("#modal input[data-bk]")], all = b.every(i => i.checked); b.forEach(i => { i.checked = !all; }); },
   moraleStep: el => el.dataset.c ? setCabMorale(el.dataset.c, cabMorale(el.dataset.c) + num(el.dataset.d)) : setMorale(el.dataset.s, D().sides[el.dataset.s].morale + num(el.dataset.d)),
   ovSide: el => { UI.ovSide = el.dataset.s; saveUI(); render(); },
@@ -1633,7 +1633,7 @@ const A = {
   uDup: el => { const u = byId(el.dataset.id); if (!u) return; const base = u.name.replace(/\s+\d+$/, ""); act(`Duplicated ${u.name}`, d => { const x = { ...u, id: uid("u"), name: `${base} ${nextNum(d, base)}`, ord: num(u.ord) + 0.5 }; delete x.remote; delete x.mirror; delete x.fsv; d.units.push(x); UI.drawer = x.id; }, "add"); },
   uDel: el => arm(el, () => { const u = byId(el.dataset.id); if (!u) return; if (foreign(u)) { denyForeign(u); return; } UI.drawer = null; UI.sel.att = UI.sel.att.filter(x => x !== u.id); UI.sel.def = UI.sel.def.filter(x => x !== u.id); act(`${u.name} removed from the roster`, d => { d.units = d.units.filter(x => x.id !== u.id); }, "remove"); })
 };
-const UF_L = { cab: "cabinet", side: "side", front: "front", type: "sub class", branch: "class", hp: "HP", maxhp: "full HP", atk: "attack", mov: "movement", rng: "range" };
+const UF_L = { cab: "country", side: "side", front: "front", type: "sub class", branch: "class", hp: "HP", maxhp: "full HP", atk: "attack", mov: "movement", rng: "range" };
 const C = {
   cpChar: el => {
     const u = el.dataset.u, t = el.dataset.t, ch = el.value || null;

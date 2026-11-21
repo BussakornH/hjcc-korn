@@ -302,7 +302,7 @@ function mpGroups(side, kind, items, codeOf, row) {
   const order = id => { if (!byCab) return bOrd(id); const i = cabs.findIndex(c => c.id === id); return i < 0 ? 99 : i; };
   const pick = kind === "ob" || kind === "ob-res", t = S.topic;
   return [...g].sort((a, b) => order(a[0]) - order(b[0])).map(([k, xs]) => {
-    const id = side + "|" + kind + "|" + k, open = mpGOpen.has(id), c = byCab ? cabById(k) : null, br = byCab ? (c ? { name: c.name, color: c.color } : { name: "No cabinet", color: "#6b7380" }) : (d.branches.find(b => b.id === k) || { name: "Other", color: "#6b7380" });
+    const id = side + "|" + kind + "|" + k, open = mpGOpen.has(id), c = byCab ? cabById(k) : null, br = byCab ? (c ? { name: c.name, color: c.color } : { name: "No country", color: "#6b7380" }) : (d.branches.find(b => b.id === k) || { name: "Other", color: "#6b7380" });
     if (byCab) xs.sort((p, q) => (bOrd(mpBranchOf(codeOf(p), p.uid || p.id)) - bOrd(mpBranchOf(codeOf(q), q.uid || q.id))) || String(p.name).localeCompare(String(q.name), undefined, { numeric: true }));
     const allOn = pick && xs.every(u => mpPick.has(u.id)), hid = byCab && kind === "map" && mpHide[t].has("cab:" + k);
     const extra = pick && ROLE !== "delegate" ? `<button class="mp-gx${allOn ? " on" : ""}" data-a="mapPickGrp" data-k="${esc(id)}" aria-pressed="${allOn}" aria-label="${allOn ? "Unselect" : "Select"} all ${esc(br.name)} units" title="${allOn ? "Unselect" : "Select"} every unit in this group">${ico("checks")}</button>`

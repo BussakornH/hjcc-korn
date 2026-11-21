@@ -319,7 +319,7 @@ function mpHideBar(t) {
   const chip = (act, attr, key, label, dot, n) => { const off = h.has(key); return `<button class="hb-chip${off ? " off" : ""}" data-a="${act}" ${attr} aria-pressed="${!off}" title="${off ? "Show" : "Hide"} ${esc(label)} troops (your screen only)">${dot ? `<i style="background:${esc(dot)}"></i>` : ""}<b>${esc(label)}</b><small>${n}</small></button>`; };
   const sides = ["me", "foe", "ne"].map(sd => chip("mapHideSide", `data-s="${sd}"`, "side:" + sd, sideLbl(sd).replace(/ Powers$/, ""), sd === "me" ? "var(--me)" : sd === "foe" ? "var(--foe)" : "#8a91a0", all.filter(x => x.side === sd).length)).join("");
   const cn = id => all.filter(x => mpCabKey(x) === id).length, none = cn("_");
-  const cabChips = cabs.map(c => chip("mapHideCab", `data-c="${c.id}"`, "cab:" + c.id, c.name, c.color, cn(c.id))).join("") + (none ? chip("mapHideCab", 'data-c="_"', "cab:_", "No cabinet", "#6b7380", none) : "");
+  const cabChips = cabs.map(c => chip("mapHideCab", `data-c="${c.id}"`, "cab:" + c.id, c.name, c.color, cn(c.id))).join("") + (none ? chip("mapHideCab", 'data-c="_"', "cab:_", "No country", "#6b7380", none) : "");
   const anyOff = h.size > 0;
   return `<div class="mp-hb" role="group" aria-label="Show or hide troops on the map"><span class="mp-hb-k">Show</span><div class="mp-hb-row">${sides}${cabs.length ? `<i class="mp-sep"></i>${cabChips}` : ""}</div><div class="mp-hb-act">${cabs.length ? `<button class="btn sm plain" data-a="mapHideAll" data-v="hide">Hide all</button>` : ""}<button class="btn sm plain" data-a="mapHideAll" data-v="show" ${anyOff ? "" : "disabled"}>Show all</button></div></div>`;
 }

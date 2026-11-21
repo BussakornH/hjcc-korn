@@ -1095,3 +1095,22 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .vis-t:hover { border-color: var(--ink-3); } .vis-t:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .vis-t.off { background: var(--panel-3); color: var(--ink-3); border-style: dashed; } .vis-t.off b { text-decoration: line-through; }
 .mp-vis-n { margin-left: auto; color: var(--ink-3); font-size: var(--fs-xs); }
+
+/* ---------- consistency pass ---------- */
+/* country switch: one line at laptop width */
+.cab-bar { gap: 5px; } .cb-chip { min-height: 30px; padding: 3px 10px; font-size: 12.5px; gap: 5px; } .cb-chip i { width: 8px; height: 8px; }
+/* combat pickers: unit names wrap onto two lines instead of being cut */
+.pk-n b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
+/* order of battle: the neutral parties get the full width and their front names */
+.dead-mid.neu-mid { width: 100%; justify-self: stretch; }
+.dead-mid.neu-mid .col-h { display: flex; } .dead-mid.neu-mid .half-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.dead-mid.neu-mid .col { background: var(--panel-2); border-radius: 12px; }
+/* forces: sub class names wrap rather than being cut ("Dreadnought Battles…") */
+.mf-sh { grid-template-columns: minmax(210px, 1.6fr) 100px minmax(80px, 1fr) 140px 110px minmax(120px, 1fr) auto; }
+.mf-tg b { white-space: normal; line-height: 1.3; }
+@media (max-width: 900px) { .mf-sh { grid-template-columns: minmax(0, 1fr) auto; } }
+/* order of battle cards: the unit name gets two lines before it is cut */
+.card .c-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; overflow: hidden; }
+.card .c-top { align-items: flex-start; }
+.pipe-b { min-width: 0; overflow-x: auto; }
+@media (max-width: 560px) { .mp-board { order: -1; } }
