@@ -39,23 +39,26 @@ const PT_KM = 111.32, PT_ICON = { weak: "Weak point", fort: "Fortified point" };
 function mpPtAdopt(j) { if (j && j.points) PTS = { t1: j.points.t1 || [], t2: j.points.t2 || [] }; if (j && j.turn) TURN = Object.assign({}, TURN, j.turn); mpPtAt = Date.now(); }
 /* ---------- the turn order (shared through api/lines.js) ----------
    A round is eight turns: One, Two, Two, One, One, Two, Two, One. Cabinet One is a side (Allied by default), Cabinet Two the other.
-   step 0-7 is the turn being played; 8 means the round is over and the next press starts the next round. */
+   step 0-7 is the turn being played; 8 means the round is over and the next press starts the next round.
+   The game opens with a Prep phase (prep: true) before round 1, turn 1: nobody's turn, both sides set up, and stealth does not hide anyone. */
 let mpHbOpen = false;
-let TURN = { t1: { one: "me", round: 1, step: 0 }, t2: { one: "me", round: 1, step: 0 } }, mpTurnBusy = false;
+let TURN = { t1: { one: "me", round: 1, step: 0, prep: true }, t2: { one: "me", round: 1, step: 0, prep: true } }, mpTurnBusy = false;
 const TURN_ORDER = [1, 2, 2, 1, 1, 2, 2, 1];
-const turnOf = t => TURN[t] || { one: "me", round: 1, step: 0 };
+const turnOf = t => TURN[t] || { one: "me", round: 1, step: 0, prep: true };
+const turnPrep = t => !!turnOf(t).prep;
 const turnSideAt = (t, i) => { const v = turnOf(t), two = v.one === "me" ? "foe" : "me"; return TURN_ORDER[i] === 1 ? v.one : two; };
-const turnNow = t => { const v = turnOf(t); return v.step < 8 ? turnSideAt(t, v.step) : null; };   /* the side whose turn it is, or null between rounds */
+const turnNow = t => { const v = turnOf(t); return !v.prep && v.step < 8 ? turnSideAt(t, v.step) : null; };   /* the side whose turn it is, or null in Prep and between rounds */
 function mpTurnBar(t) {
-  const v = turnOf(t), cur = v.step < 8 ? v.step : -1, nm = sd => sideLbl(sd).replace(/ Powers$/, ""), now = turnNow(t), nx = v.step < 7 ? turnSideAt(t, v.step + 1) : null;
-  const segs = TURN_ORDER.map((n, i) => { const sd = turnSideAt(t, i), st = i < v.step ? "done" : i === cur ? "now" : "next"; return `<li class="tb-s tb-${st} tb-${sd}" title="Turn ${i + 1}: ${esc(sideLbl(sd))} (Cabinet ${n === 1 ? "One" : "Two"})${st === "done" ? ", played" : st === "now" ? ", now" : ""}" aria-current="${st === "now" ? "step" : "false"}"><span>${i + 1}</span><b>${esc(nm(sd))}</b></li>`; }).join("");
-  const label = now ? `<b>Turn ${v.step + 1}/8 · <em class="tb-who tb-${now}">${esc(nm(now))}</em></b><small>${nx ? "Next: " + esc(nm(nx)) : "Last turn of the round"}</small>` : `<b>Round ${v.round} complete</b><small>All eight turns played</small>`;
+  const v = turnOf(t), pr = !!v.prep, cur = !pr && v.step < 8 ? v.step : -1, nm = sd => sideLbl(sd).replace(/ Powers$/, ""), now = turnNow(t), nx = pr ? turnSideAt(t, 0) : v.step < 7 ? turnSideAt(t, v.step + 1) : null;
+  const segs = TURN_ORDER.map((n, i) => { const sd = turnSideAt(t, i), st = !pr && i < v.step ? "done" : i === cur ? "now" : "next"; return `<li class="tb-s tb-${st} tb-${sd}" title="Turn ${i + 1}: ${esc(sideLbl(sd))} (Cabinet ${n === 1 ? "One" : "Two"})${st === "done" ? ", played" : st === "now" ? ", now" : ""}" aria-current="${st === "now" ? "step" : "false"}"><span>${i + 1}</span><b>${esc(nm(sd))}</b></li>`; }).join("");
+  const prepSeg = v.round === 1 ? `<li class="tb-s tb-prep tb-${pr ? "now" : "done"}" title="Prep phase: both sides set up before turn 1${pr ? ", now" : ", played"}" aria-current="${pr ? "step" : "false"}"><span>P</span><b>Prep</b></li>` : "";
+  const label = pr ? `<b>Prep phase · <em class="tb-who">Both sides</em></b><small>Set up, then turn 1: ${esc(nm(nx))}</small>` : now ? `<b>Turn ${v.step + 1}/8 · <em class="tb-who tb-${now}">${esc(nm(now))}</em></b><small>${nx ? "Next: " + esc(nm(nx)) : "Last turn of the round"}</small>` : `<b>Round ${v.round} complete</b><small>All eight turns played</small>`;
   const one = `<select class="sel tb-one" data-c="mapTurnOne" aria-label="Cabinet One (goes first)" title="Cabinet One (goes first)">${["me", "foe"].map(sd => `<option value="${sd}" ${v.one === sd ? "selected" : ""}>One: ${esc(nm(sd))}</option>`).join("")}</select>`;
-  return `<div class="tb-row" role="group" aria-label="Turn order"><div class="tb-l"><span class="tb-r">Round ${v.round}</span><div class="tb-t">${label}</div></div><ol class="tb-segs">${segs}</ol><div class="tb-act">${one}<button class="btn sm" data-a="mapTurn" data-op="back" ${v.step === 0 && v.round === 1 ? "disabled" : ""}>Back</button><button class="btn sm plain" data-a="mapTurnReset" title="Back to round 1, turn 1">Reset</button><button class="btn sm primary tb-next" data-a="mapTurn" data-op="next">${now ? (v.step === 7 ? "Finish round" : "Next turn") : `Start round ${v.round + 1}`}</button></div></div>`;
+  return `<div class="tb-row" role="group" aria-label="Turn order"><div class="tb-l"><span class="tb-r">Round ${v.round}</span><div class="tb-t">${label}</div></div><ol class="tb-segs${prepSeg ? " has-prep" : ""}">${prepSeg}${segs}</ol><div class="tb-act">${one}<button class="btn sm" data-a="mapTurn" data-op="back" ${pr ? "disabled" : ""}>Back</button><button class="btn sm plain" data-a="mapTurnReset" title="Back to the Prep phase before round 1">Reset</button><button class="btn sm primary tb-next" data-a="mapTurn" data-op="next">${pr ? "Start turn 1" : now ? (v.step === 7 ? "Finish round" : "Next turn") : `Start round ${v.round + 1}`}</button></div></div>`;
 }
 function mpTurnSend(op) {
   if (mpTurnBusy) return; const t = S.topic, v = turnOf(t); mpTurnBusy = true;
-  SentinelAuth.api("POST", "/api/lines", { topic: t, turn: op, from: v.round + ":" + v.step }).then(r => r.ok ? r.json() : Promise.reject()).then(j => {
+  SentinelAuth.api("POST", "/api/lines", { topic: t, turn: op, from: v.prep ? "prep" : v.round + ":" + v.step }).then(r => r.ok ? r.json() : Promise.reject()).then(j => {
     const moved = JSON.stringify(j.turn) !== JSON.stringify(v); TURN = Object.assign({}, TURN, { [t]: j.turn });
     const now = turnNow(t); if (now) { UI.mpSide = now; saveUI(); }   /* the forces panel follows the side whose turn it is */
     if (!moved && (op === "next" || op === "back")) toast("Another chair moved the turn just now");

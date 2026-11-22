@@ -84,6 +84,9 @@ load as Neutral. The Combat Calculator's "War map" button opens the map with the
 The war map has a turn bar: a round is eight turns, Cabinet One, Two, Two, One, One, Two, Two, One. Cabinet One is a side (Allied unless a chair
 picks Central), Cabinet Two the other. Next turn / Back / Reset are shared through `api/lines.js` (`turn:<topic>`); a press carries the turn it was
 made on, so two chairs pressing at once cannot skip a turn. After turn 8 the round is over and the button starts the next one.
+The game opens with a **Prep phase** before round 1, turn 1 (`prep: true` on the turn): it is nobody's turn, both sides set up, and stealth hides no one.
+"Start turn 1" ends it, Back from round 1 turn 1 returns to it, and Reset starts over in it. Later rounds have no Prep. A topic that was already
+playing when Prep was added keeps its current turn.
 A troop in stealth (`st`, the Stealth mode button on its card) is off the map on the other side's turns and shows faintly on its own side's turns.
 
 ## Trenches
