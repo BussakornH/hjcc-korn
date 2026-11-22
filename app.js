@@ -547,7 +547,13 @@ function pgStatus() {
   <p class="muted" style="font-size:12.5px">The database's own CPU and RAM are not exposed to queries. The numbers above come straight from Postgres. Compute CPU and RAM for the Neon database are in the Neon console, or can be added here with a Neon API key.</p>`;
 }
 /* ---------- SIDES BY DAY: admin and chairs pull each character onto a side, one day at a time ---------- */
-function loadSides() { return SentinelAuth.api("GET", "/api/sides").then(r => r.ok ? r.json() : null).then(j => { SD = j || SD || false; if (UI.page === "sides") render(); }, () => {}); }
+function loadSides() {
+  if (ROLE !== "admin" && ROLE !== "chair") return Promise.resolve();
+  return SentinelAuth.api("GET", "/api/sides").then(r => r.ok ? r.json() : null).then(j => {
+    const was = JSON.stringify(SD); SD = j || SD || false;
+    if ((UI.page === "sides" || UI.page === "morale") && JSON.stringify(SD) !== was && !dragging() && !sdPick && !document.querySelector("#page :focus")) render();
+  }, () => {});
+}
 function sdSend(body) {
   return SentinelAuth.api("POST", "/api/sides", body).then(r => r.ok ? r.json() : Promise.reject()).then(j => { SD[body.topic] = j; sdPick = null; render(); }, () => toast("Could not save, try again"));
 }
@@ -709,14 +715,14 @@ function emptyState() {
 /* ---------- MORALE: the chairs set it, delegates only see their own side's ----------
    The figure lives on the server (api/morale.js); every device copies it into its own sides[].morale so the charts and the combat calculator keep using it. */
 const MORALE_NA = {};   /* topic -> true while a delegate is on no side, so there is no morale to show */
-let moraleBusy = 0;
+let moraleBusy = 0, moraleGen = 0;   /* moraleGen: bumped by every local change, so a read sent before it cannot put the old figure back */
 const showMorale = () => D().rules.useMorale && !(DEL && MORALE_NA[S.topic]);
 function setMorale(s, raw) {
   if (ROLE !== "chair") { deny(); render(); return; }
   if (typeof raw === "string" && !raw.trim()) { render(); return; }   /* an emptied field is not 0%: keep the figure */
   const d = D(), v = clamp(r2(num(raw, 50)), 0, 100), o = d.sides[s].morale; if (v === o) { render(); return; }
   d.sides[s].morale = v; addLog(d, `Morale (${sideLbl(s)}): ${fx(o)}% → ${fx(v)}%`, "rules"); save(); render();
-  moraleBusy++;
+  moraleBusy++; moraleGen++;
   SentinelAuth.api("POST", "/api/morale", { topic: S.topic, side: s, value: v }).then(r => { if (!r.ok) throw 0; }).catch(() => { toast("Could not save the morale, try again"); }).then(() => { moraleBusy--; loadMorale(); });
 }
 function setCabMorale(c, raw) {
@@ -724,7 +730,7 @@ function setCabMorale(c, raw) {
   if (!cabById(c) || (typeof raw === "string" && !raw.trim())) { render(); return; }
   const d = D(), v = clamp(r2(num(raw, 50)), 0, 100), o = cabMorale(c); if (v === o) { render(); return; }
   d.cabMorale = Object.assign({}, d.cabMorale, { [c]: v }); addLog(d, `Morale (${cabName(c)}): ${fx(o)}% → ${fx(v)}%`, "rules"); save(); render();
-  moraleBusy++;
+  moraleBusy++; moraleGen++;
   SentinelAuth.api("POST", "/api/morale", { topic: S.topic, cab: c, value: v }).then(r => { if (!r.ok) throw 0; }).catch(() => { toast("Could not save the morale, try again"); }).then(() => { moraleBusy--; loadMorale(); });
 }
 /* ---------- shared rules ----------
@@ -783,8 +789,9 @@ async function rulesFlush() {
 }
 function loadMorale() {
   if (ROLE === "admin") return Promise.resolve();
+  const gen = moraleGen;
   return SentinelAuth.api("GET", "/api/morale").then(r => r.ok ? r.json() : null).then(j => {
-    if (!j || moraleBusy) return; let ch = false;
+    if (!j || moraleBusy || gen !== moraleGen) return; let ch = false;
     ["t1", "t2"].forEach(t => {
       const d = S.topics[t]; if (!d) return;
       if (DEL) { const v = j.mine && j.mine[t], na = v == null; if (!!MORALE_NA[t] !== na) { MORALE_NA[t] = na; ch = true; } if (!na && d.sides.me.morale !== v) { d.sides.me.morale = v; ch = true; } }
@@ -802,14 +809,23 @@ function pgMorale() {
     <div class="stat-big">${fx(m)}<small>%</small></div><div class="stat-lbl">Morale of ${esc(sideLbl(s))}</div>
     <div class="fld" style="margin-top:18px"><label for="mo-${s}">Set morale</label><div class="rng"><input type="range" min="0" max="100" step="1" value="${m}" id="mo-${s}r" data-i="pair" data-pair="mo-${s}" data-c="morale" data-s="${s}" aria-label="Morale of ${esc(sideLbl(s))}"><input type="number" min="0" max="100" step="1" value="${fx(m)}" id="mo-${s}" data-i="pair" data-pair="mo-${s}r" data-c="morale" data-s="${s}"></div></div>
     <div class="row-btns">${[-10, -5, 5, 10].map(n => `<button class="btn sm" data-a="moraleStep" data-s="${s}" data-d="${n}">${n > 0 ? "+" : "−"}${Math.abs(n)}</button>`).join("")}</div></div>`; };
-  if (hasCabs()) return pgMoraleCab(d, card);
+  if (hasCabs()) { if (SD === null) { SD = false; loadSides(); } return pgMoraleCab(d, card); }
   return head("Morale", "Set the morale of each side. Delegates can only see their own side's figure, and the combat calculator uses it for the attacker.") +
     (d.rules.useMorale ? "" : '<div class="note">Morale is switched off in Rules &amp; formulas, so it is not part of the damage for now.</div>') +
     `<section class="set-grid">${card("me")}${card("foe")}</section>`;
 }
 
-/* the side a country is on now: the side most of its units are on, else the side it starts on */
+/* the side a country is on now. The chairs decide that on Sides by day: the side most of the country's characters are on today (the latest day;
+   on a tie the side it starts on wins if it is one of them). Until that page's data is in, the side most of its units are on, else the side it starts on. */
+function cabSideSD(c, t = S.topic) {
+  if (!SD || !SD[t] || !SD.cabs || !SD.cabs[t]) return null;
+  const days = SD[t].days, day = days[days.length - 1], n = { me: 0, foe: 0, ne: 0 };
+  Object.keys(SD.cabs[t]).forEach(id => { if (SD.cabs[t][id] === c) { const sd = day.sides[id] || "ne"; if (n[sd] != null) n[sd]++; } });
+  const top = Math.max(n.me, n.foe, n.ne); if (!top) return null;
+  const def = (cabById(c) || {}).side || "ne"; return n[def] === top ? def : ["me", "foe", "ne"].find(k => n[k] === top);
+}
 function cabSide(c, d = D()) {
+  const sd = cabSideSD(c); if (sd) return sd;
   const n = { me: 0, foe: 0, ne: 0 }; d.units.forEach(u => { if (u.cab === c && !lost(u) && n[u.side] != null) n[u.side]++; });
   const best = Object.keys(n).sort((a, b) => n[b] - n[a])[0]; return n[best] ? best : ((cabById(c) || {}).side || "ne");
 }
@@ -1758,6 +1774,7 @@ reseed();
 })();
 render();
 loadMorale(); setInterval(() => { if (!document.hidden) loadMorale(); }, 15000);
+setInterval(() => { if (!document.hidden && SD !== null && (UI.page === "sides" || UI.page === "morale")) loadSides(); }, 15000);   /* another chair moving a character shows here too */
 loadRules(); setInterval(() => { if (!document.hidden) loadRules(); }, 15000);
 const beat = () => { if (!document.hidden) SentinelAuth.api("POST", "/api/status", { topic: S.topic, page: UI.page }).catch(() => {}); };
 beat(); setInterval(beat, 45000);

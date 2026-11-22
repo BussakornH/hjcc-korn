@@ -4,7 +4,7 @@ const CHARS = require("./_chars");
 const NAMES = CHARS.SIDE_NAMES, TOPIC = ["t1", "t2"], SIDES = ["me", "foe", "ne"];
 
 /* Which side each character is on, day by day. Day 1 starts from the allocation sheet; a new day copies the day before.
-   GET                                  -> admin / chair: { t1: { days: [{ n, sides: { charId: "me"|"foe"|"ne" } }] }, t2: {...}, names }
+   GET                                  -> admin / chair: { t1: { days: [{ n, sides: { charId: "me"|"foe"|"ne" } }] }, t2: {...}, names, cabs: { t2: { charId: cabinet } } }
                                            delegate:      { mine: { t1?: {char, topic, day, side, label}, t2?: {...} } }
    POST { topic, day, id, side }        -> move one character                (admin, chair)
    POST { topic, addDay: true }         -> start the next day                (admin, chair)
@@ -17,7 +17,11 @@ module.exports = L.wrap(async (req, res) => {
   if (!me) return L.send(res, 401, { error: "auth" });
   const staff = me.role === "admin" || me.role === "chair";
   if (req.method === "GET") {
-    if (staff) { const out = { names: NAMES }; for (const t of TOPIC) out[t] = await load(t); return L.send(res, 200, out); }
+    if (staff) {
+      /* cabs: { t2: { charId: cabinet id } } so the Morale page can put each country on the side its characters are on */
+      const out = { names: NAMES, cabs: {} }; for (const t of TOPIC) { out[t] = await load(t); out.cabs[t] = {}; CHARS.forEach((c) => { if (c.topic === t && c.cab) out.cabs[t][c.id] = c.cab; }); }
+      return L.send(res, 200, out);
+    }
     const mine = {}, own = (await L.db.allocs())[me.u] || {};
     for (const t of TOPIC) {
       const ch = CHARS.find((c) => c.id === own[t]); if (!ch) continue;

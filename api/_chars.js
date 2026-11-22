@@ -16,7 +16,10 @@ const T2 = [
   ["Emperor Franz Joseph I (Austria-Hungary)", "ce"], ["Enver Pasha (Ottoman Empire)", "ce"], ["Field Marshal Paul Von Hindenburg (German Empire)", "ce"], ["H.H. Asquith (Britain)", "al"], ["Istvan Tisza (Austria-Hungary)", "ce"],
   ["Ivan Goremykin (Russia)", "al"], ["Antonin de Selliers de Moranville (Belgium)", "nu"], ["John Jellicoe (Britain)", "al"], ["Ataturk (Ottoman Empire)", "ce"], ["Alfred Von Tirpitz (German Empire)", "ce"]
 ];
-const mk = (topic, rows) => rows.map(([name, f], i) => ({ id: topic + "-" + String(i + 1).padStart(2, "0"), topic, name, faction: f, factionLabel: F[f].label, side: F[f].side }));
+/* the country (Topic 2 cabinet, presets.js) a character speaks for, from the name in brackets; Sweden, Japan and Belgium have no cabinet */
+const CAB_OF = { USA: "us", France: "fr", Netherlands: "nl", Russia: "ru", Britain: "gb", Spain: "es", "German Empire": "de", "Austria-Hungary": "ah", "Ottoman Empire": "ot" };
+const cabOf = (topic, name) => { const m = topic === "t2" && /\(([^)]+)\)\s*$/.exec(name); return (m && CAB_OF[m[1]]) || null; };
+const mk = (topic, rows) => rows.map(([name, f], i) => ({ id: topic + "-" + String(i + 1).padStart(2, "0"), topic, name, faction: f, factionLabel: F[f].label, side: F[f].side, cab: cabOf(topic, name) }));
 const CHARS = mk("t1", T1).concat(mk("t2", T2));
 /* names of the blue ("me") and red ("foe") side in each topic; everyone else is Neutral */
 const SIDE_NAMES = { t1: { me: "French royals", foe: "English royals", ne: "Neutral" }, t2: { me: "Allied powers", foe: "Central powers", ne: "Neutral" } };
