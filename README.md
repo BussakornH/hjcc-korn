@@ -68,6 +68,13 @@ keeps `cab: { <id>: value }`); in combat a group fights with the HP-weighted mor
 Rules & Formulas has "Sub class stats by country": each country's own ATK / HP / MOV / RNG on top of the base (`d.cabTypes`, kept on each device like the
 sub classes); a country's new units use them and "Update units" gives them to its existing units.
 
+## Sub class logos
+Edit sub class (or Add sub class) has a Logo field: a chair uploads a PNG, JPEG or WebP and the page shrinks it to a square of at most 96 px (24 KB).
+Logos are shared by sub class code, per topic, through `api/lines.js` (`GET ?logos=1`, `POST { topic, logo: { code, src } }`, 60 per topic) so every chair
+sees the same one; the plain lines GET leaves them out because the maps poll it. A logo shows next to the sub class on Forces and replaces the symbol on the
+war map (inside a ring in the side's colour). A troop now carries its own sub class code (letters, digits and "-", up to 8), not INF; one without a built-in
+symbol or a logo still draws as INF. Changing a sub class's code moves its logo; deleting the sub class removes it.
+
 ## War map layout
 Left: the forces of one side at a time (Allied / Central / Neutral switch): units still to put on the map, grouped by cabinet, then that side's
 troops on the map. Right: the card of the selected troop (a neutral unit's card has Join Allied / Join Central). Spain, the USA and the Netherlands

@@ -1000,7 +1000,7 @@ function subBlock(t, units, b) {
   const name = t ? t.name : "Custom units";
   return `<div class="mf-sub${open ? " open" : ""}${units.length ? "" : " no-units"}">
     <div class="mf-sh">
-      <button class="mf-tg" id="tg-${k}" data-a="mfOpen" data-k="${k}" aria-expanded="${open}"><span class="chev">${ico("chev")}</span><span class="code" style="--bc:${b.color}">${esc(t ? t.code : "—")}</span><b>${esc(name)}</b></button>
+      <button class="mf-tg" id="tg-${k}" data-a="mfOpen" data-k="${k}" aria-expanded="${open}"><span class="chev">${ico("chev")}</span>${t && mpLogo(t.code) ? `<img class="sub-logo" src="${esc(mpLogo(t.code))}" alt="">` : ""}<span class="code" style="--bc:${b.color}">${esc(t ? t.code : "—")}</span><b>${esc(name)}</b></button>
       <div class="mf-left">${units.length ? `<b>${al.length}</b> left of ${units.length}` : '<span class="muted">No units</span>'}</div>
       <div class="rr-sq">${units.slice().sort(byStr).map(u => `<i class="sq t-${tierOf(u)}" title="${esc(u.name)} · HP ${fx(u.hp)}/${fx(u.maxhp)} · ${esc(frontName(u.front))}"></i>`).join("")}</div>
       <div class="rr-str">${al.length ? `<div class="hpbar"><i class="t-${tierKey(st)}" style="width:${st}%"></i></div><span>${Math.round(st)}%</span>` : ""}</div>
@@ -1011,12 +1011,33 @@ function subBlock(t, units, b) {
     ${open ? `<div class="mf-units">${units.length ? units.slice().sort(byOrd).map(unitRow).join("") : `<div class="none">No ${esc(name)} units yet. <button class="lnk" data-a="addUnits" data-s="${forceSide()}" data-t="${t ? t.id : ""}">Add some</button></div>`}${t ? `<div class="mf-stats">Sub class stats for new units: ATK ${fx(t.atk)} · HP ${fx(t.hp)} · MOV ${fx(t.mov)} · RNG ${fx(t.rng)}</div>` : ""}</div>` : ""}
   </div>`;
 }
+const cleanCode = v => String(v || "").trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 8);   /* letters, digits and "-": the codes a troop on the map can carry */
+/* save the dialog's logo choice under the sub class's (new) code; a code that changed takes its old logo with it */
+function subLogoApply(oldCode, code) {
+  const t = S.topic, cur = oldCode ? mpLogo(oldCode) : "", want = subLogo !== undefined ? subLogo : cur;
+  if (want !== mpLogo(code)) logoSave(t, code, want);
+  if (oldCode && oldCode !== code && cur) logoSave(t, oldCode, "");
+  subLogo = undefined;
+}
 function autoCode(name) {
   const w = name.toUpperCase().replace(/[^A-Z0-9 ]/g, " ").split(/\s+/).filter(Boolean), c = w.length > 1 ? w.map(x => x[0]).join("").slice(0, 5) : (w[0] || "NEW").slice(0, 4);
   let out = c, n = 2; while (D().types.some(t => t.code === out)) out = c + n++; return out;
 }
+/* the logo picked in the open sub class dialog: undefined leaves it as it is, "" removes it, a data URL sets it (saved with the sub class, by its code) */
+let subLogo, subLogoT = null;
+const subLogoPrev = t => subLogo !== undefined ? subLogo : t ? mpLogo(t.code) : "";
+function subLogoField(t) {
+  const lg = subLogoPrev(t), sym = t && MPCODES.includes(t.code) ? `symbols/${forceSide() === "foe" ? "red" : "blue"}/${t.code}.png` : "symbols/blue/INF.png";
+  return `<span class="lbl">Logo</span><div class="sub-lf">
+    <img id="sbLogoImg" class="sub-lf-img${lg ? " own" : ""}" src="${esc(lg || sym)}" alt="">
+    <div class="sub-lf-tx"><span id="sbLogoTx" class="muted">${lg ? "Your logo. It shows on Forces and on the war map for every chair." : t && MPCODES.includes(t.code) ? "The standard symbol. Upload a logo to use your own instead." : "No logo yet: on the war map these units show the infantry symbol."}</span>
+      <div class="sub-lf-b"><label class="btn sm" for="sbLogo">${ico("plus")} ${lg ? "Change logo" : "Upload logo"}</label><input id="sbLogo" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-c="subLogo" class="vh-only">
+      ${lg ? `<button class="btn sm" data-a="subLogoDel">Remove logo</button>` : ""}</div>
+      <small class="muted">PNG, JPEG or WebP. A square picture on a transparent background works best; it is shrunk to 96 px.</small></div></div>`;
+}
 function openSub(branchId, typeId) {
   const d = D(), t = typeId ? d.types.find(x => x.id === typeId) : null; if (typeId && !t) return;
+  subLogo = undefined; subLogoT = t ? t.id : null;
   const b = t ? t.branch : (branchId || d.branches[0].id), n = t ? d.units.filter(u => u.type === t.id).length : 0;
   const nf = (id, l, v, min) => `<div class="fld"><label for="${id}">${l}</label><input id="${id}" type="number" min="${min}" step="0.5" value="${fx(v)}"></div>`;
   openModal(`<h2>${t ? `Edit sub class: ${esc(t.name)}` : `Add a sub class to ${esc(branchById(b).name)}`}</h2><p class="muted">A sub class is a kind of unit inside a class, for example Light Infantry in the Army. Its stats fill in new units${bookletFor() ? " (from the chairs' booklet)" : " and are placeholders until the chairs' booklet arrives"}.</p>
@@ -1025,16 +1046,19 @@ function openSub(branchId, typeId) {
       <div class="fld"><label for="sbCode">Short code</label><input id="sbCode" value="${esc(t ? t.code : "")}" maxlength="8" placeholder="Automatic"></div>
       <div class="fld"><label for="sbClass">Class</label><select id="sbClass">${d.branches.map(x => `<option value="${x.id}" ${x.id === b ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div>
       ${nf("sbAtk", "Attack", t ? t.atk : 0, 0)}${nf("sbHp", "Full HP", t ? t.hp : 1, 0.5)}${nf("sbMov", "Movement", t ? t.mov : 0, 0)}${nf("sbRng", "Range", t ? t.rng : 0, 0)}
+      <div class="fld span4" id="sbLogoF">${subLogoField(t)}</div>
       ${n ? `<label class="fld span4 chk"><span><input type="checkbox" id="sbPush"> Also give the ${plural(n, "existing unit")} these stats (their HP keeps its share)</span></label>` : ""}
     </div>
     <div class="m-act">${t ? `<button class="btn danger" data-a="subDel" data-id="${t.id}">${ico("trash")} Delete</button><span class="grow"></span>` : ""}<button class="btn" data-a="modalClose">Cancel</button><button class="btn primary" data-a="subGo" data-id="${t ? t.id : ""}">${t ? "Save" : "Add sub class"}</button></div>`);
 }
 function submitSub(id) {
   const name = $("sbName").value.trim().slice(0, 40); if (!name) { toast("Give the sub class a name"); $("sbName").focus(); return; }
-  const code = $("sbCode").value.trim().toUpperCase().slice(0, 8) || autoCode(name);
+  const code = cleanCode($("sbCode").value) || autoCode(name);
+  if (D().types.some(x => x.code === code && x.id !== id)) { toast(`Another sub class already uses the code ${code}`); $("sbCode").focus(); return; }
   const st = { branch: $("sbClass").value, atk: Math.max(0, r2(num($("sbAtk").value))), hp: Math.max(0, r2(num($("sbHp").value))), mov: Math.max(0, r2(num($("sbMov").value))), rng: Math.max(0, r2(num($("sbRng").value))) };
   if (!(st.hp > 0)) { toast("Full HP must be more than 0"); $("sbHp").focus(); return; }
   const push = !!($("sbPush") && $("sbPush").checked);
+  { const o = id && D().types.find(x => x.id === id); subLogoApply(o ? o.code : null, code); }
   closeModal();
   if (id) { act(`Sub class edited: ${name}${push ? " (stats given to its units)" : ""}`, d => { const t = d.types.find(x => x.id === id); if (!t) return; Object.assign(t, { name, code, ...st, ph: false }); d.units.forEach(u => { if (u.type !== id) return; u.tcode = code; u.tname = name; u.branch = st.branch; if (push) { const f = u.maxhp > 0 ? u.hp / u.maxhp : 1; Object.assign(u, { atk: st.atk, mov: st.mov, rng: st.rng, maxhp: st.hp, hp: r2(st.hp * f) }); } }); }, "rules"); return; }
   const nid = uid("t");
@@ -1570,7 +1594,8 @@ const A = {
   subAdd: el => openSub(el.dataset.b, null),
   subEdit: el => openSub(null, el.dataset.id),
   subGo: el => submitSub(el.dataset.id),
-  subDel: el => arm(el, () => { const t = D().types.find(x => x.id === el.dataset.id); if (!t) return; closeModal(); act(`Sub class removed: ${t.name} (its units stay, as custom units)`, d => { d.types = d.types.filter(x => x.id !== t.id); d.units.forEach(u => { if (u.type === t.id) u.type = ""; }); }, "rules"); }),
+  subLogoDel: () => { subLogo = ""; if ($("sbLogoF")) $("sbLogoF").innerHTML = subLogoField(D().types.find(x => x.id === subLogoT)); },
+  subDel: el => arm(el, () => { const t = D().types.find(x => x.id === el.dataset.id); if (!t) return; closeModal(); if (mpLogo(t.code)) logoSave(S.topic, t.code, ""); act(`Sub class removed: ${t.name} (its units stay, as custom units)`, d => { d.types = d.types.filter(x => x.id !== t.id); d.units.forEach(u => { if (u.type === t.id) u.type = ""; }); }, "rules"); }),
   mfOpen: el => {
     const k = el.dataset.k, was = !!UI.open[k]; if (was) delete UI.open[k]; else UI.open[k] = true; saveUI();
     const sub = el.closest(".mf-sub"), units = sub && sub.querySelector(".mf-units");
@@ -1634,7 +1659,7 @@ const A = {
   rtDel: el => { const t = el.dataset.t, i = num(el.dataset.n); act(`Rule table (${TBL_L[t]}): row removed`, d => { d.rules[t].splice(i, 1); }, "rules"); },
   rtReset: el => { const t = el.dataset.t; act(`Rule table (${TBL_L[t]}) restored to default`, d => { d.rules[t] = defaultRules()[t]; }, "rules"); },
   typeAdd: () => act("Sub class added: NEW", d => { d.types.push({ id: uid("t"), code: "NEW", name: "New sub class", branch: d.branches[0].id, atk: 0, hp: 1, mov: 0, rng: 0, ph: false }); }, "rules"),
-  typeDel: el => arm(el, () => { const t = D().types.find(x => x.id === el.dataset.id); if (!t) return; act(`Sub class removed: ${t.name} (its units keep their stats)`, d => { d.types = d.types.filter(x => x.id !== t.id); d.units.forEach(u => { if (u.type === t.id) u.type = ""; }); }, "rules"); }),
+  typeDel: el => arm(el, () => { const t = D().types.find(x => x.id === el.dataset.id); if (!t) return; if (mpLogo(t.code)) logoSave(S.topic, t.code, ""); act(`Sub class removed: ${t.name} (its units keep their stats)`, d => { d.types = d.types.filter(x => x.id !== t.id); d.units.forEach(u => { if (u.type === t.id) u.type = ""; }); }, "rules"); }),
   typePush: el => { const t = D().types.find(x => x.id === el.dataset.id); if (!t) return; const c = el.dataset.cab || "", mine = u => u.type === t.id && !u.remote && (!c || u.cab === c), n = D().units.filter(mine).length;
     act(`${t.name}: ${c ? cabName(c) + "'s " : ""}sub class stats pushed to ${plural(n, "unit")}`, d => { d.units.forEach(u => { if (!mine(u)) return; const x = typeFor(d, t, u.cab), f = u.maxhp > 0 ? u.hp / u.maxhp : 1; u.atk = x.atk; u.mov = x.mov; u.rng = x.rng; u.maxhp = x.hp; u.hp = r2(x.hp * f); }); }, "rules"); },
   ruleCab: el => { UI.ruleCab = el.dataset.c; saveUI(); render(); },
@@ -1662,6 +1687,11 @@ const C = {
   cpChar: el => {
     const u = el.dataset.u, t = el.dataset.t, ch = el.value || null;
     SentinelAuth.api("POST", "/api/allocation", { u, topic: t, char: ch }).then(r => r.ok ? (toast(ch ? "Character given to " + u : "Character cleared for " + u), loadAlloc()) : r.json().then(j => { toast(j.error === "taken" ? "Another account already has that character" : "Could not save the character"); loadAlloc(); }, () => toast("Could not save the character")), () => toast("Could not reach the server"));
+  },
+  subLogo: el => {
+    const f = el.files && el.files[0]; el.value = ""; if (!f) return;
+    logoFromFile(f).then(src => { subLogo = src; if ($("sbLogoF")) $("sbLogoF").innerHTML = subLogoField(D().types.find(x => x.id === subLogoT)); },
+      e => toast(e.message === "size" ? "That picture is too big, try a smaller or simpler one" : "Pick a PNG, JPEG or WebP picture"));
   },
   imp: el => { const f = el.files && el.files[0]; el.value = ""; if (ROLE !== "admin") { deny(); return; } if (f) importJSON(f); },
   pick: el => { const w = el.dataset.w, id = el.dataset.id; if (el.checked) { if (!UI.sel[w].includes(id)) UI.sel[w].push(id); } else UI.sel[w] = UI.sel[w].filter(x => x !== id); saveUI(); render(); },
@@ -1715,7 +1745,7 @@ const C = {
   },
   type: el => {
     const t = D().types.find(x => x.id === el.dataset.id); if (!t) return; const k = el.dataset.k; let v = el.value;
-    if (["atk", "hp", "mov", "rng"].includes(k)) v = Math.max(0, r2(num(v, t[k]))); else if (k === "code") v = v.trim().toUpperCase().slice(0, 8) || t.code; else if (k === "name") v = v.trim().slice(0, 40) || t.name;
+    if (["atk", "hp", "mov", "rng"].includes(k)) v = Math.max(0, r2(num(v, t[k]))); else if (k === "code") { v = cleanCode(v) || t.code; if (v !== t.code && D().types.some(x => x.code === v)) { toast(`Another sub class already uses the code ${v}`); render(); return; } if (v !== t.code) { subLogo = undefined; subLogoApply(t.code, v); } } else if (k === "name") v = v.trim().slice(0, 40) || t.name;
     if (k === "hp" && !(v > 0)) { toast("HP must be more than 0"); render(); return; }
     if (t[k] === v) return;
     act(`Sub class ${t.code}: ${k === "branch" ? "class" : k} ${k === "branch" ? branchById(t[k]).name : t[k]} → ${k === "branch" ? branchById(v).name : v}`, d => { const x = d.types.find(y => y.id === t.id); x[k] = v; x.ph = false; d.units.forEach(u => { if (u.type !== x.id) return; if (k === "code") u.tcode = v; if (k === "name") u.tname = v; if (k === "branch") u.branch = v; }); }, "rules");

@@ -6,7 +6,56 @@ let TR = { t1: [], t2: [] }, mpTPend = 0, mpTGen = 0, mpTS = null, mpPlace = nul
 const MPAFF = [["blue", "Blue"], ["red", "Red"], ["neutral-green", "Green"], ["neutral-violet", "Violet"], ["neutral-slate", "Slate"]];
 const MPAFFC = { blue: "#0a7cff", red: "#ff453a", "neutral-green": "#2fb85a", "neutral-violet": "#a259f0", "neutral-slate": "#8a91a0" };
 const MPSEA = ["GAL", "COG", "DES", "CRU", "DRD", "SUB"], MPAIR = ["FTR", "REC", "BMB"];
-const mpDomain = c => MPAIR.includes(c) ? "air" : MPSEA.includes(c) ? "sea" : "land";
+const mpDomain = c => {
+  if (MPAIR.includes(c)) return "air"; if (MPSEA.includes(c)) return "sea"; if (typeof MPCODES === "undefined" || MPCODES.includes(c) || typeof D !== "function") return "land";
+  const t = D().types.find(y => y.code === c); return t && t.branch === "air" ? "air" : t && t.branch === "navy" ? "sea" : "land";   /* a chairs' own sub class moves like its class */
+};
+/* Sub class logos: a chair can give any sub class its own image (Edit sub class). They are shared by code through api/lines.js (?logos=1), so every screen
+   draws the same one; this device keeps the last copy so the map does not flash the stand-in symbol on load. A troop of a sub class without a symbol or a logo shows INF. */
+const LOGO_K = "sentinel-logos", LOGO_CODE = /^[A-Z0-9-]{1,8}$/;
+let LOGOS = (() => { try { const v = JSON.parse(localStorage.getItem(LOGO_K) || "null"); return v && v.t1 && v.t2 ? v : { t1: {}, t2: {} }; } catch (e) { return { t1: {}, t2: {} }; } })();
+const mpLogo = (code, t) => { const m = LOGOS[t || S.topic] || {}; return Object.prototype.hasOwnProperty.call(m, code) ? m[code] : ""; };
+const mpCodeOf = c => (typeof MPCODES !== "undefined" && MPCODES.includes(c)) || LOGO_CODE.test(c || "") ? c : "INF";   /* what a troop carries: the sub class code the server takes */
+const mpSym = (aff, code) => mpLogo(code) || `symbols/${aff}/${MPCODES.includes(code) ? code : "INF"}.png`;
+function logosLoad() {
+  return SentinelAuth.api("GET", "/api/lines?logos=1").then(r => r.ok ? r.json() : null).then(j => {
+    if (!j || !j.logos) return; const n = { t1: j.logos.t1 || {}, t2: j.logos.t2 || {} };
+    if (JSON.stringify(n) === JSON.stringify(LOGOS)) return;
+    LOGOS = n; try { localStorage.setItem(LOGO_K, JSON.stringify(n)); } catch (e) {}
+    if (typeof render === "function" && !document.querySelector("#modal.on")) render();
+  }, () => {});
+}
+function logoSave(t, code, src) {
+  const old = mpLogo(code, t); if (src) LOGOS[t][code] = src; else delete LOGOS[t][code];
+  try { localStorage.setItem(LOGO_K, JSON.stringify(LOGOS)); } catch (e) {}
+  return SentinelAuth.api("POST", "/api/lines", { topic: t, logo: { code, src: src || null } }).then(r => r.ok ? null : r.json().then(j => j.error, () => "x")).then(err => {
+    if (!err) return true;
+    if (old) LOGOS[t][code] = old; else delete LOGOS[t][code];
+    toast(err === "full" ? "The chairs have used every logo slot for this topic: remove one first" : err === "logo" ? "That image is too big or not a PNG, JPEG or WebP" : "Could not save the logo, try again");
+    render(); return false;
+  }, () => { toast("Could not reach the server, the logo was not saved"); return false; });
+}
+/* any picture the chair picks, made into a square PNG (WebP if smaller) of at most 96 px, small enough to share with every screen */
+function logoFromFile(f) {
+  return new Promise((ok, no) => {
+    if (!f || !/^image\//.test(f.type)) return no(new Error("type"));
+    if (f.size > 8 * 1024 * 1024) return no(new Error("size"));
+    const url = URL.createObjectURL(f), img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const w = img.naturalWidth, h = img.naturalHeight; if (!w || !h) return no(new Error("empty"));
+      for (const side of [96, 72, 56]) {
+        const c = document.createElement("canvas"); c.width = c.height = side; const g = c.getContext("2d"), k = Math.min(side / w, side / h), dw = w * k, dh = h * k;
+        g.imageSmoothingQuality = "high"; g.drawImage(img, (side - dw) / 2, (side - dh) / 2, dw, dh);
+        const outs = [c.toDataURL("image/png"), c.toDataURL("image/webp", 0.9)].filter(x => /^data:image\/(png|webp);/.test(x)).sort((a, b) => a.length - b.length);
+        if (outs[0] && outs[0].length <= 24 * 1024) return ok(outs[0]);
+      }
+      no(new Error("size"));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); no(new Error("type")); };
+    img.src = url;
+  });
+}
 const mpHpCol = p => p > 66 ? "#34c759" : p > 33 ? "#ff7a45" : "#ff453a";
 const mpTroops = () => TR[S.topic] || [];
 /* A chair can hide troops on the map (this screen only, nothing is saved): a whole side ("me" / "foe") and, on a topic with cabinets, any of the
@@ -170,6 +219,7 @@ function mpTroopSync() {
       });
       const lz = !!lost(u); if (!del && x.lost !== lz) { x.lost = lz; push = true; }
       if (!del && !u.mirror && (x.cab || "") !== (u.cab || "")) { x.cab = u.cab || ""; push = true; }   /* the cabinet is the unit's: a troop follows it */
+      if (!del && !u.mirror && u.tcode && mpCodeOf(u.tcode) !== x.code) { x.code = mpCodeOf(u.tcode); push = true; }   /* and so is its sub class (a new code, or an own sub class first placed as INF) */
       else if (u.mirror && (u.cab || "") !== (x.cab || "")) { u.cab = x.cab || ""; save(); local = true; }
       mpAg[x.id] = {}; MPF.forEach(k => { mpAg[x.id][k] = k === "name" ? u.name : num(u[k]); });
     });
@@ -210,7 +260,7 @@ function mpTroopsSvg(t) {
     if (mpHid(t, x)) return "";
     const p = mpXY(g, x.lat, x.lon); if (p[0] < -20 || p[0] > g.W + 20 || p[1] < -20 || p[1] > g.H + 20) return "";
     const pc = x.maxhp > 0 ? Math.max(0, Math.min(1, x.hp / x.maxhp)) : 0, on = x.id === mpTS;
-    return `<g class="trp${on ? " on" : ""}${x.lost ? " dead" : ""}${x.st ? " stealth" : ""}" data-a="mapTroop" data-id="${esc(x.id)}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><g class="trp-i">${on ? '<circle class="trp-r" r="34"/>' : ""}${x.id === mpPing ? '<circle class="trp-ping" r="34"/><circle class="trp-ping b" r="34"/>' : ""}<circle class="trp-hit" r="30"/><image href="symbols/${x.aff}/${x.code}.png" x="-30" y="-30" width="60" height="60"/><rect class="trp-hb" x="-19" y="20" width="38" height="4.5" rx="2.2"/><rect x="-19" y="20" width="${(38 * pc).toFixed(1)}" height="4.5" rx="2.2" style="fill:${mpHpCol(pc * 100)}"/><text class="trp-n" y="38">${esc(x.name)}</text>${cabTag(x)}${mpTrenchOf(t, x) ? '<path class="trp-tr" d="M-19 28.5l3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3"/>' : ""}</g></g>`;
+    return `<g class="trp${on ? " on" : ""}${x.lost ? " dead" : ""}${x.st ? " stealth" : ""}" data-a="mapTroop" data-id="${esc(x.id)}" transform="translate(${p[0].toFixed(1)} ${p[1].toFixed(1)})"><g class="trp-i">${on ? '<circle class="trp-r" r="34"/>' : ""}${x.id === mpPing ? '<circle class="trp-ping" r="34"/><circle class="trp-ping b" r="34"/>' : ""}<circle class="trp-hit" r="30"/>${mpLogo(x.code) ? `<circle class="trp-lg" r="25" style="stroke:${MPAFFC[x.aff] || "#8a91a0"}"/><image href="${esc(mpLogo(x.code))}" x="-18" y="-18" width="36" height="36" preserveAspectRatio="xMidYMid meet"/>` : `<image href="${mpSym(x.aff, x.code)}" x="-30" y="-30" width="60" height="60"/>`}<rect class="trp-hb" x="-19" y="20" width="38" height="4.5" rx="2.2"/><rect x="-19" y="20" width="${(38 * pc).toFixed(1)}" height="4.5" rx="2.2" style="fill:${mpHpCol(pc * 100)}"/><text class="trp-n" y="38">${esc(x.name)}</text>${cabTag(x)}${mpTrenchOf(t, x) ? '<path class="trp-tr" d="M-19 28.5l3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3 3.8-3 3.8 3"/>' : ""}</g></g>`;
   }).join("");
 }
 /* the cabinet's short code in its colour, top left of the marker */
@@ -297,7 +347,7 @@ const mpLatLon = x => Math.abs(x.lat).toFixed(2) + "°" + (x.lat < 0 ? "S" : "N"
 function mpTroopCard() {
   const x = mpTrFind(mpTS); if (!x) return ""; const chair = ROLE !== "delegate", pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0, km = Math.round(x.mov * ((window.SENTINEL_TERRAIN || {}).kmPerMov || 30)), local = chair && x.uid && D().units.some(u => u.id === x.uid);
   const dom = mpDomain(x.code);
-  return `<section class="panel mp-card"><div class="trc"><img src="symbols/${x.aff}/${x.code}.png" alt=""><div><b>${esc(x.name)}</b><span>${esc(x.code)} · ${esc(sideLbl(x.side))}${x.cab && cabById(x.cab) ? " · " + esc(cabName(x.cab)) : ""}${x.lost ? " · destroyed" : ""}</span></div></div>
+  return `<section class="panel mp-card"><div class="trc"><img src="${esc(mpSym(x.aff, x.code))}" alt=""${mpLogo(x.code) ? ` class="lg" style="--ac:${MPAFFC[x.aff]}"` : ""}><div><b>${esc(x.name)}</b><span>${esc(x.code)} · ${esc(sideLbl(x.side))}${x.cab && cabById(x.cab) ? " · " + esc(cabName(x.cab)) : ""}${x.lost ? " · destroyed" : ""}</span></div></div>
     <div class="trc-hp"><div class="trc-bar"><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></div><span>HP <b>${fx(x.hp)}</b> / ${fx(x.maxhp)} · ${pc}%</span></div>
     ${(() => { const tr = mpTrenchOf(S.topic, x); return tr ? `<p class="trc-tr"><b>In the ${esc(tr.name)}</b> (${TR_TIER[tr.tier].toLowerCase()}): takes ${fx(num(D().rules.trenchCut, 50))}% less damage when attacked.</p>` : ""; })()}
     <div class="trc-st"><span>ATK <b>${fx(x.atk)}</b></span><span>MOV <b>${fx(x.mov)}</b></span><span>RNG <b>${fx(x.rng)}</b></span><span class="trc-pos">AT <b>${mpLatLon(x)}</b></span></div>
@@ -352,7 +402,7 @@ function mpForcesCol(t) {
   const chair = ROLE !== "delegate", d = D(), side = mpSideNow(), aff = mpAffOf(side), picks = mpPickLive();
   const placed = new Set(mpTroops().map(x => x.uid)), free = d.units.filter(u => u.side === side && !lost(u) && !placed.has(u.id));
   /* every unit not on the map is ready to deploy: one list, no Reserve / Active split */
-  const row = u => { const on = picks.has(u.id); return `<div class="trt${on ? " on" : ""}" id="trt-${esc(u.id)}" role="checkbox" aria-checked="${on}" tabindex="0" data-a="mapTrType" data-id="${esc(u.id)}" title="Click to select (several at once), then click the map. Or drag it onto the map."><span class="trt-ck" aria-hidden="true"></span><img src="symbols/${aff}/${esc(MPCODES.includes(u.tcode) ? u.tcode : "INF")}.png" alt="" draggable="false"><span><b>${esc(u.name)}</b><i>ATK ${fx(u.atk)} · HP ${fx(u.hp)}/${fx(u.maxhp)} · MOV ${fx(u.mov)}</i></span></div>`; };
+  const row = u => { const on = picks.has(u.id); return `<div class="trt${on ? " on" : ""}" id="trt-${esc(u.id)}" role="checkbox" aria-checked="${on}" tabindex="0" data-a="mapTrType" data-id="${esc(u.id)}" title="Click to select (several at once), then click the map. Or drag it onto the map."><span class="trt-ck" aria-hidden="true"></span><img src="${esc(mpSym(aff, mpCodeOf(u.tcode)))}" alt="" draggable="false"${mpLogo(u.tcode) ? ` class="lg" style="--ac:${MPAFFC[aff]}"` : ""}><span><b>${esc(u.name)}</b><i>ATK ${fx(u.atk)} · HP ${fx(u.hp)}/${fx(u.maxhp)} · MOV ${fx(u.mov)}</i></span></div>`; };
   const mine = free.filter(u => picks.has(u.id)).length;
   const sect = (cls, label, n, body) => `<div class="mp-ob ${cls}"><div class="mp-ob-h"><b>${label}</b><small>${n}</small></div>${body}</div>`;
   const cnt = sd => d.units.filter(u => u.side === sd && !lost(u)).length;
@@ -363,7 +413,7 @@ function mpForcesCol(t) {
   const empty = (cnt(side) ? `<p class="muted mp-empty">All ${plural(cnt(side), esc(sideLbl(side).replace(/ Powers$/, "")) + " unit")} are already on the map (see <b>On the map</b> below; drag a marker to move it). To place more, add units first.</p>` : `<p class="muted mp-empty">No ${esc(sideLbl(side))} units yet. Add some, then put them on the map.</p>`) + more;
   const ob = chair ? `<section class="panel mp-card mp-forces">${tabs}<div class="mp-fhint"><p>${hint}</p>${mine ? `<button class="btn sm" data-a="mapPickClear" data-s="${side}">Clear</button>` : ""}</div><div class="trt-g">${free.length ? sect("act", "Ready to deploy", free.length, mpGroups(side, "ob", free, u => u.tcode, row)) : empty}</div></section>` : "";
   const on = mpTroops().filter(x => x.side === side).sort((a, b) => a.name.localeCompare(b.name)), hidN = on.filter(x => mpHid(t, x)).length;
-  const list = `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 6px"><div><h3>On the map</h3><p>${on.length ? plural(on.length, esc(sideLbl(side).replace(/ Powers$/, "")) + " troop") + (hidN ? ` · ${hidN} hidden` : "") : "None placed yet"}</p></div></div>${mpGroups(side, "map", on, x => x.code, x => { const pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0, h = mpHid(t, x); return `<button class="trl-row${x.id === mpTS ? " on" : ""}${x.lost ? " dead" : ""}${h ? " hid" : ""}" data-a="mapTroop" data-id="${esc(x.id)}"${h ? ' title="Hidden on the map"' : ""}><img src="symbols/${x.aff}/${esc(x.code)}.png" alt=""><span><b>${esc(x.name)}</b><em><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></em></span><small>${fx(x.hp)}/${fx(x.maxhp)}</small></button>`; })}</section>`;
+  const list = `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 6px"><div><h3>On the map</h3><p>${on.length ? plural(on.length, esc(sideLbl(side).replace(/ Powers$/, "")) + " troop") + (hidN ? ` · ${hidN} hidden` : "") : "None placed yet"}</p></div></div>${mpGroups(side, "map", on, x => x.code, x => { const pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0, h = mpHid(t, x); return `<button class="trl-row${x.id === mpTS ? " on" : ""}${x.lost ? " dead" : ""}${h ? " hid" : ""}" data-a="mapTroop" data-id="${esc(x.id)}"${h ? ' title="Hidden on the map"' : ""}><img src="${esc(mpSym(x.aff, x.code))}" alt=""${mpLogo(x.code) ? ` class="lg" style="--ac:${MPAFFC[x.aff]}"` : ""}><span><b>${esc(x.name)}</b><em><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></em></span><small>${fx(x.hp)}/${fx(x.maxhp)}</small></button>`; })}</section>`;
   return ob + list;
 }
 function mpCardCol() {
@@ -428,7 +478,7 @@ function mpPlaceMany(ids, lat, lon) {
   const T = (TR[t] = TR[t] || []);
   us.forEach((u, i) => {
     const ll = mpLL(g, c[0] + hex[i][0], c[1] + hex[i][1]);
-    const x = { id: ("p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + i).slice(0, 24), uid: u.id, name: u.name, code: MPCODES.includes(u.tcode) ? u.tcode : "INF", aff: mpAffOf(u.side), side: u.side, cab: u.cab || "", lat: ll[0], lon: ll[1], hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), lost: false };
+    const x = { id: ("p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) + i).slice(0, 24), uid: u.id, name: u.name, code: mpCodeOf(u.tcode), aff: mpAffOf(u.side), side: u.side, cab: u.cab || "", lat: ll[0], lon: ll[1], hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), lost: false };
     T.push(x); mpAg[x.id] = { name: u.name, hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng) }; mpPick.delete(u.id);
   });
   if (T.length > 200) toast("A map holds 200 troops at most: take some off first");
@@ -487,4 +537,5 @@ document.addEventListener("click", e => {
   });
 })();
 /* the troops list and this device's forces stay in step while you are on any page */
+logosLoad(); setInterval(() => { if (!document.hidden) logosLoad(); }, 30000);
 setInterval(() => { if (typeof ROLE !== "undefined" && ROLE !== "admin" && mpTLoaded && !document.hidden && !mpTDrag) mpTroopsLoad(); }, 10000);
