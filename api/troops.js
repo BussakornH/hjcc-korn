@@ -14,6 +14,7 @@ const CHARS = require("./_chars");
    uid is the chair's unit id, "r:<username>:<unit id>" for a delegate's unit. Usernames may contain dots, so dots are kept. */
 const TOPIC = ["t1", "t2"], MAX = 200;
 const CODES = ["INF", "L-INF", "H-INF", "M-INF", "SF", "XBW", "HOB", "CAV", "ARC", "SIE", "GAL", "COG", "MAR", "ART", "ENG", "DES", "CRU", "DRD", "SUB", "FTR", "REC", "BMB", "NLF", "MP", "ARM", "SAP", "BAT"];
+const OWN = /^[A-Z0-9-]{1,8}$/;   /* a chairs' own sub class: its code, drawn with the logo the chairs gave it (api/lines.js ?logos=1), or the INF symbol without one */
 const AFF = ["blue", "red", "neutral-green", "neutral-violet", "neutral-slate"];
 const n = (v, lo, hi) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v * 100) / 100)) : null; };
 const clean = (v) => {
@@ -22,7 +23,7 @@ const clean = (v) => {
   for (const x of v) {
     const id = String((x && x.id) || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24), name = String((x && x.name) || "").trim().slice(0, 40);
     const lat = n(x && x.lat, -90, 90), lon = n(x && x.lon, -180, 180), hp = n(x && x.hp, 0, 100000), maxhp = n(x && x.maxhp, 0, 100000);
-    if (!id || seen.has(id) || !name || lat === null || lon === null || hp === null || maxhp === null || !CODES.includes(x.code) || !AFF.includes(x.aff)) return null;
+    if (!id || seen.has(id) || !name || lat === null || lon === null || hp === null || maxhp === null || !(CODES.includes(x.code) || OWN.test(String(x.code || ""))) || !AFF.includes(x.aff)) return null;
     seen.add(id);
     out.push({ id, uid: String(x.uid || "").replace(/[^A-Za-z0-9_:.-]/g, "").slice(0, 64), name, code: x.code, aff: x.aff, side: x.side === "foe" || x.side === "ne" ? x.side : "me", cab: String(x.cab || "").replace(/[^a-z]/g, "").slice(0, 8),
       lat: Math.round(lat * 1000) / 1000, lon: Math.round(lon * 1000) / 1000, hp: Math.min(hp, maxhp), maxhp, atk: n(x.atk, 0, 1000) || 0, mov: n(x.mov, 0, 1000) || 0, rng: n(x.rng, 0, 1000) || 0, lost: !!x.lost, st: !!x.st });

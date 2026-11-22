@@ -15,7 +15,11 @@ const DEFAULTS = require("./_lines");
         A round is eight turns: One, Two, Two, One, One, Two, Two, One, where Cabinet One is a side ("me" or "foe") and Cabinet Two the other.
         step 0-7 is the turn being played, 8 means the round is over; "next" from 8 starts the next round. Answers { ok, turn }.
    GET also returns turn: { t1: { one, round, step }, t2: ... }
-   GET also returns citySides: { t1: { cityName: side }, t2: {...} } */
+   GET also returns citySides: { t1: { cityName: side }, t2: {...} }
+   GET ?logos=1                     -> { logos: { t1: { CODE: dataUrl }, t2: {...} } }   (any signed-in role) the chairs' own logos for sub classes, by sub class code.
+        Kept out of the plain GET, which every map polls, because the images are much bigger than everything else here.
+   POST { topic, logo: { code, src } } -> set a sub class's logo (src a small PNG / JPEG / WebP data URL), or clear it (src null)   (admin, chair) */
+const LOGO_MAX = 24 * 1024, LOGO_N = 60, LOGO_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/, CODE_RE = /^[A-Z0-9-]{1,8}$/;
 const TURN0 = { one: "me", round: 1, step: 0 };
 const turnOf = (v) => (v && (v.one === "me" || v.one === "foe") && v.round >= 1 && v.step >= 0 && v.step <= 8 ? { one: v.one, round: v.round, step: v.step } : { ...TURN0 });
 const TOPIC = ["t1", "t2"], MAX_LINES = 40, MAX_PTS = 120, MAX_POINTS = 60;
@@ -48,6 +52,10 @@ module.exports = L.wrap(async (req, res) => {
   if (!me) return L.send(res, 401, { error: "auth" });
   const canEdit = me.role === "admin" || me.role === "chair";
   if (req.method === "GET") {
+    if (new URL(req.url || "/", "http://x").searchParams.get("logos")) {
+      const logos = {}; for (const t of TOPIC) logos[t] = (await L.db.getKv("logos:" + t)) || {};
+      return L.send(res, 200, { logos });
+    }
     const out = { canEdit };
     out.citySides = {}; out.points = {}; out.turn = {};
     for (const t of TOPIC) out.turn[t] = turnOf(await L.db.getKv("turn:" + t));
@@ -59,6 +67,20 @@ module.exports = L.wrap(async (req, res) => {
   if (req.method !== "POST") return L.send(res, 405, { error: "method" });
   const b = await L.readJson(req), t = String(b.topic || "");
   if (!TOPIC.includes(t)) return L.send(res, 400, { error: "topic" });
+  if (b.logo !== undefined) {
+    const code = String((b.logo && b.logo.code) || ""), src = b.logo && b.logo.src;
+    if (!CODE_RE.test(code)) return L.send(res, 400, { error: "code" });
+    if (src != null && (typeof src !== "string" || src.length > LOGO_MAX || !LOGO_RE.test(src))) return L.send(res, 400, { error: "logo" });
+    let full = false;
+    await L.updateKv("logos:" + t, (cur) => {   /* atomic: two chairs giving logos to different sub classes at once both land */
+      const m = cur && typeof cur === "object" ? cur : {}; full = false;
+      if (src == null) delete m[code];
+      else if (Object.keys(m).length < LOGO_N || Object.prototype.hasOwnProperty.call(m, code)) m[code] = src;
+      else { full = true; return undefined; }
+      return m;
+    });
+    return full ? L.send(res, 400, { error: "full" }) : L.send(res, 200, { ok: true });
+  }
   if (b.citySide) {
     const nm = String(b.citySide.name || "").trim().slice(0, 40), sd = String(b.citySide.side || "");
     if (!nm || !["me", "foe", "n", "default"].includes(sd)) return L.send(res, 400, { error: "city" });
