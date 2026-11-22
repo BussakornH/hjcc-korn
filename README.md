@@ -44,6 +44,8 @@ Delegates no longer sign in: the access levels are Chair and Admin. A delegate a
 its sign-in is refused and any session it held stops working. Remove it, or give it chair access with a new password.
 The chairs run every force. Each chair's forces, log and sub class stats are stored in that chair's browser (localStorage) and copied to the server, so the
 other chairs see them: they can change another chair's unit's HP and front and use it in battles, but only its owner can rename it, change its stats or remove it.
+A chair's own units also come back from that server copy: a new browser, another laptop, a private window or cleared site data gets them back on the first load,
+and a device sends its list only after that load, so it can no longer overwrite the server copy with a short or empty one.
 The combat rules (formula, switches, tables, directives) are shared: an edit by the Admin or a chair is saved in the database and reaches every screen within 15 seconds.
 The first time, a chair's device hands in the rules it already has; resetting a topic leaves its rules alone.
 A unit's attack, movement and range stop at 1000 and its HP at 100000, here and on the server.

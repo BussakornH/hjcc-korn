@@ -43,7 +43,7 @@ function mpTrAdopt(j) {
    Units a former delegate account left on the server still arrive, under "r:<username>:<unit id>", until the admin resets the topic. */
 let mpFSent = {}, mpFT = 0;
 function mpForcesPush() {
-  if (typeof ROLE === "undefined" || ROLE !== "chair") return; clearTimeout(mpFT);
+  if (typeof ROLE === "undefined" || ROLE !== "chair" || !mpFOk) return; clearTimeout(mpFT);   /* not before this device has taken its own units back from the server (mpForcesLoad): pushing first replaced the server copy with whatever this browser happened to hold */
   mpFT = setTimeout(() => ["t1", "t2"].forEach(t => {
     const d = S.topics[t]; if (!d) return;
     const units = d.units.filter(u => !u.mirror && !u.remote).slice(0, 300).map(u => ({ id: u.id, name: u.name, code: u.tcode || "", cls: u.tname || "", branch: u.branch || "", side: u.side, cab: u.cab || "", hp: num(u.hp), maxhp: num(u.maxhp), atk: num(u.atk), mov: num(u.mov), rng: num(u.rng), fr: u.front === "reserve" ? "reserve" : (u.front === "lost" || lost(u)) ? "lost" : "front" })), j = JSON.stringify(units);
@@ -52,17 +52,38 @@ function mpForcesPush() {
        the chairs see. Only send an empty list from a device that has itself sent units for this topic before. */
     const fk = "hjcc-fpush:" + KEY + ":" + t; let owns = false; try { owns = localStorage.getItem(fk) === "1"; } catch (e) {}
     if (!units.length && !owns) return;
-    SentinelAuth.api("POST", "/api/forces", { topic: t, units }).then(r => { if (r.ok) { mpFSent[t] = j; if (units.length) { try { localStorage.setItem(fk, "1"); } catch (e) {} } } }).catch(() => {});
+    SentinelAuth.api("POST", "/api/forces", { topic: t, units }).then(r => { if (r.ok) { mpFSent[t] = j; mpFIdsSet(t, units.map(u => u.id)); if (units.length) { try { localStorage.setItem(fk, "1"); } catch (e) {} } } }).catch(() => {});
   }), 1200);
 }
 let mpFOk = false;
+/* the ids of this chair's own units as this device last sent or took them: a unit on the server that is missing here but listed in it was removed on this
+   device (the next push takes it off the server); one that is not listed was added on another device of the same account and is taken back */
+const mpFIdsKey = t => "hjcc-fids:" + KEY + ":" + t;
+const mpFIds = t => { try { return new Set(JSON.parse(localStorage.getItem(mpFIdsKey(t)) || "[]")); } catch (e) { return new Set(); } };
+const mpFIdsSet = (t, ids) => { try { localStorage.setItem(mpFIdsKey(t), JSON.stringify(ids)); } catch (e) {} };
+/* this chair's own units from the server copy: a new browser, another laptop, a private window or cleared site data starts empty, and the units
+   used to stay on the server unseen until this device's next save overwrote them with its empty or short list */
+function mpOwnRestore(d, t, g) {
+  const gone = mpFIds(t), fr = (d.fronts.find(f => !f.fixed) || d.fronts[0]).id; let n = 0;
+  g.units.forEach(x => {
+    if (gone.has(x.id) || d.units.some(y => y.id === x.id && !y.mirror && !y.remote)) return;
+    const ty = d.types.find(y => y.code === x.code), front = x.fr === "reserve" ? "reserve" : x.fr === "lost" ? "lost" : fr;
+    const u = mkUnit(d, { side: x.side || "me", t: ty, name: x.name, front, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng, cab: x.cab || "", branch: x.branch });
+    u.id = x.id; if (!ty && x.cls) u.tname = x.cls; if (x.branch && d.branches.some(b => b.id === x.branch)) u.branch = x.branch;
+    const i = d.units.findIndex(y => y.id === x.id && y.mirror);   /* the stand-in a map marker made for it */
+    if (i >= 0) { u.front = d.units[i].front === "lost" ? "lost" : u.front; d.units[i] = u; } else d.units.push(u);
+    n++;
+  });
+  if (n) mpFIdsSet(t, [...new Set([...gone, ...g.units.map(x => x.id)])]);
+  return n;
+}
 function mpForcesLoad() {
   if (ROLE !== "chair") return Promise.resolve();
   return SentinelAuth.api("GET", "/api/forces").then(r => r.ok ? r.json() : null).then(j => {
-    if (!j) return; mpFOk = true; let changed = false;
+    if (!j) return; mpFOk = true; let changed = false, restored = 0;
     ["t1", "t2"].forEach(t => {
       const d = S.topics[t]; if (!d) return; const want = new Map(), fr = (d.fronts.find(f => !f.fixed) || d.fronts[0]).id, me = String(SentinelAuth.user() || "").toLowerCase();
-      (j[t] || []).forEach(g => { if (g.user === me) return; g.units.forEach(x => { const id = g.side === null ? x.id : "r:" + g.user + ":" + x.id; if (!d.units.some(y => y.id === id && !y.remote && !y.mirror)) want.set(id, { g, x, side: x.side || g.side }); }); });   /* never your own units, and never over a unit you hold yourself */
+      (j[t] || []).forEach(g => { if (g.user === me) { if (g.side === null) { const n = mpOwnRestore(d, t, g); if (n) { changed = true; restored += n; } } return; } g.units.forEach(x => { const id = g.side === null ? x.id : "r:" + g.user + ":" + x.id; if (!d.units.some(y => y.id === id && !y.remote && !y.mirror)) want.set(id, { g, x, side: x.side || g.side }); }); });   /* never your own units, and never over a unit you hold yourself */
       d.units = d.units.filter(u => { if (u.remote && !want.has(u.id)) { changed = true; return false; } return true; });
       want.forEach(({ g, x, side }, id) => {
         const ty = d.types.find(y => y.code === x.code), front = x.fr === "reserve" ? "reserve" : x.fr === "lost" ? "lost" : fr;
@@ -78,7 +99,8 @@ function mpForcesLoad() {
         if (moved) { u.fsv = { hp: x.hp, fr: x.fr }; changed = true; }
       });
     });
-    if (changed) { save(); if (!mpTDrag && !(typeof dragging === "function" && dragging())) render(); }
+    if (restored) toast(`${plural(restored, "unit")} of yours brought back from the server`);
+    if (changed) { save(); if (!mpTDrag && !(typeof dragging === "function" && dragging())) render(); } else mpForcesPush();   /* a change that waited for this load goes up now */
   }, () => {});
 }
 /* Runs once both the other chairs' forces and the troops have come back. A chair's own units are theirs to keep (they used to be thrown away here,
@@ -290,6 +312,8 @@ const mpAffOf = s => s === "me" ? "blue" : s === "foe" ? "red" : "neutral-slate"
 /* the two troop columns beside the map: Allied on the left, Central Powers on the right. Each holds the units still to drag onto the map (chairs) and the troops of that side on it; the card of the chosen troop sits at the top of its side */
 /* units are grouped by branch of service (Army, Navy, Airforce, Marine), each branch folds away over its units and remembers it was opened */
 let mpGOpen = new Set();
+/* the "On the map" groups start open (so the placed troops are in sight) and mpGOpen remembers the ones folded away; the order-of-battle groups start folded */
+const mpGInv = k => k.includes("|map|"), mpGIsOpen = k => mpGInv(k) ? !mpGOpen.has(k) : mpGOpen.has(k);
 function mpBranchOf(code, uid) {
   const d = D(), u = uid && d.units.find(y => y.id === uid), t = d.types.find(y => y.code === code);
   return (u && u.branch) || (t && t.branch) || (mpDomain(code) === "air" ? "air" : mpDomain(code) === "sea" ? "navy" : "army");
@@ -302,7 +326,7 @@ function mpGroups(side, kind, items, codeOf, row) {
   const order = id => { if (!byCab) return bOrd(id); const i = cabs.findIndex(c => c.id === id); return i < 0 ? 99 : i; };
   const pick = kind === "ob" || kind === "ob-res", t = S.topic;
   return [...g].sort((a, b) => order(a[0]) - order(b[0])).map(([k, xs]) => {
-    const id = side + "|" + kind + "|" + k, open = mpGOpen.has(id), c = byCab ? cabById(k) : null, br = byCab ? (c ? { name: c.name, color: c.color } : { name: "No country", color: "#6b7380" }) : (d.branches.find(b => b.id === k) || { name: "Other", color: "#6b7380" });
+    const id = side + "|" + kind + "|" + k, open = mpGIsOpen(id), c = byCab ? cabById(k) : null, br = byCab ? (c ? { name: c.name, color: c.color } : { name: "No country", color: "#6b7380" }) : (d.branches.find(b => b.id === k) || { name: "Other", color: "#6b7380" });
     if (byCab) xs.sort((p, q) => (bOrd(mpBranchOf(codeOf(p), p.uid || p.id)) - bOrd(mpBranchOf(codeOf(q), q.uid || q.id))) || String(p.name).localeCompare(String(q.name), undefined, { numeric: true }));
     const allOn = pick && xs.every(u => mpPick.has(u.id)), hid = byCab && kind === "map" && mpHide[t].has("cab:" + k);
     const extra = pick && ROLE !== "delegate" ? `<button class="mp-gx${allOn ? " on" : ""}" data-a="mapPickGrp" data-k="${esc(id)}" aria-pressed="${allOn}" aria-label="${allOn ? "Unselect" : "Select"} all ${esc(br.name)} units" title="${allOn ? "Unselect" : "Select"} every unit in this group">${ico("checks")}</button>`
@@ -319,7 +343,7 @@ function mpTypeGroups(pid, xs, codeOf, row, pick) {
   const d = D(), g = new Map(), ord = c => { const i = d.types.findIndex(y => y.code === c); return i < 0 ? 99 : i; };
   xs.forEach(x => { const c = codeOf(x) || "?"; if (!g.has(c)) g.set(c, []); g.get(c).push(x); });
   return [...g].sort((a, b) => ord(a[0]) - ord(b[0])).map(([c, ys]) => {
-    const id = pid + "|" + c, open = mpGOpen.has(id), ty = d.types.find(y => y.code === c), allOn = pick && ys.every(u => mpPick.has(u.id));
+    const id = pid + "|" + c, open = mpGIsOpen(id), ty = d.types.find(y => y.code === c), allOn = pick && ys.every(u => mpPick.has(u.id));
     const extra = pick && ROLE !== "delegate" ? `<button class="mp-gx${allOn ? " on" : ""}" data-a="mapPickGrp" data-k="${esc(id)}" aria-pressed="${allOn}" aria-label="${allOn ? "Unselect" : "Select"} all ${esc(ty ? ty.name : c)}" title="${allOn ? "Unselect" : "Select"} every ${esc(ty ? ty.name : c)}">${ico("checks")}</button>` : "";
     return `<div class="mp-grp mp-sub${open ? " open" : ""}"><div class="mp-ghr"><button class="mp-gh" data-a="mapGrp" data-k="${esc(id)}" aria-expanded="${open}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span class="mp-tc">${esc(c)}</span><b>${esc(ty ? ty.name : c)}</b><small>${ys.length}</small></button>${extra}</div><div class="mp-gb">${ys.map(row).join("")}</div></div>`;
   }).join("");
@@ -333,7 +357,9 @@ function mpForcesCol(t) {
   const cnt = sd => d.units.filter(u => u.side === sd && !lost(u)).length;
   const tabs = `<div class="mp-tabs" role="tablist" aria-label="Side">${MPSIDES.map(sd => `<button role="tab" class="mp-tab mp-tab-${sd}${sd === side ? " on" : ""}" data-a="mapSideTab" data-s="${sd}" aria-selected="${sd === side}"><i></i><b>${esc(sideLbl(sd).replace(/ Powers$/, ""))}</b><small>${cnt(sd)}</small></button>`).join("")}</div>`;
   const hint = picks.size ? `<b>${plural(picks.size, "unit")} selected${mine !== picks.size ? ` (${mine} here)` : ""}.</b> Click the map to put ${picks.size > 1 ? "them" : "it"} down.` : side === "ne" ? "Neutral forces: click units to select them, then click the map. Open a troop to have it join a side." : "Click units to select one or several, then click the map. Or drag one.";
-  const empty = cnt(side) ? '<p class="muted mp-empty">Every unit on this side is on the map.</p>' : `<p class="muted mp-empty">No ${esc(sideLbl(side))} units yet.${bookletFor() ? ' <button class="lnk" data-a="bookAllGo">Load booklet forces</button>' : ""}</p>`;
+  /* nothing left to place: say so, and offer the ways to get more units (the booklets, or by hand) right here */
+  const more = `<div class="mp-act" style="flex-wrap:wrap;margin-top:8px">${bookletFor() ? `<button class="btn sm primary" data-a="bookAllGo">Load booklet forces</button>` : ""}<button class="btn sm${bookletFor() ? "" : " primary"}" data-a="addUnits">${ico("plus")} Add units</button></div>`;
+  const empty = (cnt(side) ? `<p class="muted mp-empty">All ${plural(cnt(side), esc(sideLbl(side).replace(/ Powers$/, "")) + " unit")} are already on the map (see <b>On the map</b> below; drag a marker to move it). To place more, add units first.</p>` : `<p class="muted mp-empty">No ${esc(sideLbl(side))} units yet. Add some, then put them on the map.</p>`) + more;
   const ob = chair ? `<section class="panel mp-card mp-forces">${tabs}<div class="mp-fhint"><p>${hint}</p>${mine ? `<button class="btn sm" data-a="mapPickClear" data-s="${side}">Clear</button>` : ""}</div><div class="trt-g">${free.length ? (act.length ? sect("act", "Active", act.length, mpGroups(side, "ob", act, u => u.tcode, row)) : "") + (res.length ? sect("res", "Reserve", res.length, mpGroups(side, "ob-res", res, u => u.tcode, row)) : "") : empty}</div></section>` : "";
   const on = mpTroops().filter(x => x.side === side).sort((a, b) => a.name.localeCompare(b.name)), hidN = on.filter(x => mpHid(t, x)).length;
   const list = `<section class="panel mp-card"><div class="panel-h" style="margin:0 0 6px"><div><h3>On the map</h3><p>${on.length ? plural(on.length, esc(sideLbl(side).replace(/ Powers$/, "")) + " troop") + (hidN ? ` · ${hidN} hidden` : "") : "None placed yet"}</p></div></div>${mpGroups(side, "map", on, x => x.code, x => { const pc = x.maxhp > 0 ? Math.round(x.hp / x.maxhp * 100) : 0, h = mpHid(t, x); return `<button class="trl-row${x.id === mpTS ? " on" : ""}${x.lost ? " dead" : ""}${h ? " hid" : ""}" data-a="mapTroop" data-id="${esc(x.id)}"${h ? ' title="Hidden on the map"' : ""}><img src="symbols/${x.aff}/${esc(x.code)}.png" alt=""><span><b>${esc(x.name)}</b><em><i style="width:${pc}%;background:${mpHpCol(pc)}"></i></em></span><small>${fx(x.hp)}/${fx(x.maxhp)}</small></button>`; })}</section>`;
@@ -350,7 +376,7 @@ Object.assign(MAPA, {
     const x = mpTS && mpTrFind(mpTS);
     if (x && MPV && el.closest(".mp-tl")) { const p = mpXY(mpGeo(S.topic), x.lat, x.lon), m = 0; if (p[0] < MPV.x + m || p[0] > MPV.x + MPV.w - m || p[1] < MPV.y + m || p[1] > MPV.y + MPV.h - m) { MPV.x = p[0] - MPV.w / 2; MPV.y = p[1] - MPV.h / 2; mpClampView(); } }   /* a troop out of sight comes into view */
     render(); },
-  mapGrp: el => { const k = el.dataset.k, g = el.closest(".mp-grp"), o = !mpGOpen.has(k); o ? mpGOpen.add(k) : mpGOpen.delete(k); if (g) g.classList.toggle("open", o); el.setAttribute("aria-expanded", o); },
+  mapGrp: el => { const k = el.dataset.k, g = el.closest(".mp-grp"), o = !mpGIsOpen(k); o !== mpGInv(k) ? mpGOpen.add(k) : mpGOpen.delete(k); if (g) g.classList.toggle("open", o); el.setAttribute("aria-expanded", o); },
   mapTrType: el => { const id = el.dataset.id; mpPick.has(id) ? mpPick.delete(id) : mpPick.add(id); mpTS = null; render(); },
   mapPickGrp: el => { const g = el.closest(".mp-grp"), ids = g ? [...g.querySelectorAll(".trt[data-id]")].map(x => x.dataset.id) : [], all = ids.every(id => mpPick.has(id)); ids.forEach(id => all ? mpPick.delete(id) : mpPick.add(id)); if (g && !all) mpGOpen.add(el.dataset.k); render(); },
   mapPickClear: el => { const sd = el.dataset.s, d = D(); [...mpPick].forEach(id => { const u = d.units.find(y => y.id === id); if (!sd || !u || u.side === sd) mpPick.delete(id); }); render(); },
