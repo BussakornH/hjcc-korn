@@ -14,14 +14,17 @@ const DEFAULTS = require("./_lines");
    POST { topic, turn: op, from? }  -> the turn order of the war map (admin, chair). op: "next" | "back" | "reset" | "one:me" | "one:foe".
         A round is eight turns: One, Two, Two, One, One, Two, Two, One, where Cabinet One is a side ("me" or "foe") and Cabinet Two the other.
         step 0-7 is the turn being played, 8 means the round is over; "next" from 8 starts the next round. Answers { ok, turn }.
-   GET also returns turn: { t1: { one, round, step }, t2: ... }
+        The game opens with a Prep phase (prep: true, round 1, step 0) before turn 1: nobody's turn, both sides set up. "next" ends it, "back"
+        from round 1 turn 1 returns to it, "reset" starts over in it. A topic that was already playing before Prep existed has no prep field and stays as it was.
+   GET also returns turn: { t1: { one, round, step, prep }, t2: ... }
    GET also returns citySides: { t1: { cityName: side }, t2: {...} }
    GET ?logos=1                     -> { logos: { t1: { CODE: dataUrl }, t2: {...} } }   (any signed-in role) the chairs' own logos for sub classes, by sub class code.
         Kept out of the plain GET, which every map polls, because the images are much bigger than everything else here.
    POST { topic, logo: { code, src } } -> set a sub class's logo (src a small PNG / JPEG / WebP data URL), or clear it (src null)   (admin, chair) */
 const LOGO_MAX = 24 * 1024, LOGO_N = 60, LOGO_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/, CODE_RE = /^[A-Z0-9-]{1,8}$/;
-const TURN0 = { one: "me", round: 1, step: 0 };
-const turnOf = (v) => (v && (v.one === "me" || v.one === "foe") && v.round >= 1 && v.step >= 0 && v.step <= 8 ? { one: v.one, round: v.round, step: v.step } : { ...TURN0 });
+const TURN0 = { one: "me", round: 1, step: 0, prep: true };
+const turnOf = (v) => (v && (v.one === "me" || v.one === "foe") && v.round >= 1 && v.step >= 0 && v.step <= 8 ? { one: v.one, round: v.round, step: v.step, prep: !!v.prep && v.round === 1 && v.step === 0 } : { ...TURN0 });
+const turnAt = (v) => (v.prep ? "prep" : v.round + ":" + v.step);   /* what "from" names: the phase the chair pressed on */
 const TOPIC = ["t1", "t2"], MAX_LINES = 40, MAX_PTS = 120, MAX_POINTS = 60;
 const clean = (v) => {
   if (!Array.isArray(v) || v.length > MAX_LINES) return null;
@@ -97,10 +100,10 @@ module.exports = L.wrap(async (req, res) => {
     const from = b.from == null ? null : String(b.from);   /* "round:step" the chair pressed on: if the turn has moved since (another chair), nothing changes */
     await L.updateKv("turn:" + t, (cur) => {
       const v = turnOf(cur); out = v;
-      if (from !== null && op !== "reset" && !op.startsWith("one:") && from !== v.round + ":" + v.step) return undefined;
-      if (op === "next") { if (v.step < 8) v.step++; else { v.round = Math.min(999, v.round + 1); v.step = 0; } }
-      else if (op === "back") { if (v.step > 0) v.step--; else if (v.round > 1) { v.round--; v.step = 8; } }
-      else if (op === "reset") { v.round = 1; v.step = 0; }
+      if (from !== null && op !== "reset" && !op.startsWith("one:") && from !== turnAt(v)) return undefined;
+      if (op === "next") { if (v.prep) v.prep = false; else if (v.step < 8) v.step++; else { v.round = Math.min(999, v.round + 1); v.step = 0; } }
+      else if (op === "back") { if (v.prep) return undefined; if (v.step > 0) v.step--; else if (v.round > 1) { v.round--; v.step = 8; } else v.prep = true; }
+      else if (op === "reset") { v.round = 1; v.step = 0; v.prep = true; }
       else v.one = op.slice(4);
       out = v; return v;
     });

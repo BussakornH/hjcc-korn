@@ -62,7 +62,7 @@ const mpTroops = () => TR[S.topic] || [];
    cabinets ("_" stands for troops that belong to no cabinet). Hidden troops leave the map; they stay in the lists beside it, marked hidden. */
 const mpHide = { t1: new Set(), t2: new Set() };
 const mpCabKey = x => (x.cab && CABS().some(c => c.id === x.cab)) ? x.cab : "_";
-const mpHid = (t, x) => { if (x.st && typeof turnNow === "function" && turnNow(t) !== x.side) return true;   /* stealth: off the map on the other side's turns */
+const mpHid = (t, x) => { if (x.st && typeof turnNow === "function" && !turnPrep(t) && turnNow(t) !== x.side) return true;   /* stealth: off the map on the other side's turns (not in Prep) */
   const h = mpHide[t]; return !!h && h.size > 0 && (h.has("side:" + x.side) || (CABS(t).length > 0 && h.has("cab:" + mpCabKey(x)))); };
 /* units ticked in the order of battle, to be put on the map together with one click (or one drag) */
 const mpPick = new Set();

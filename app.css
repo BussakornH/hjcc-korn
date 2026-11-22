@@ -1126,3 +1126,8 @@ ol.work ul { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .sub-lf-b:focus-within label.btn { outline: 2px solid var(--accent); outline-offset: 2px; }
 .trp-lg { fill: #f4f6fa; stroke-width: 3px; }
 .trc img.lg, .trt img.lg, .trl-row img.lg { box-sizing: border-box; padding: 4px; border: 2px solid var(--ac, #8a91a0); border-radius: 50%; background: #f4f6fa; object-fit: contain; }
+
+/* war map turn bar: the Prep phase before round 1, turn 1 (both sides set up) */
+.tb-segs.has-prep { grid-template-columns: minmax(0, .8fr) repeat(8, minmax(0, 1fr)); }
+.tb-s.tb-prep { border-bottom-color: var(--ink-3); }
+.tb-s.tb-prep.tb-now { background: var(--ink); color: var(--bg, #000); } .tb-s.tb-prep.tb-now b { color: inherit; }
