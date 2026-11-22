@@ -67,7 +67,7 @@ function mpOwnRestore(d, t, g) {
   const gone = mpFIds(t), fr = (d.fronts.find(f => !f.fixed) || d.fronts[0]).id; let n = 0;
   g.units.forEach(x => {
     if (gone.has(x.id) || d.units.some(y => y.id === x.id && !y.mirror && !y.remote)) return;
-    const ty = d.types.find(y => y.code === x.code), front = x.fr === "reserve" ? "reserve" : x.fr === "lost" ? "lost" : fr;
+    const ty = d.types.find(y => y.code === x.code), front = x.fr === "lost" ? "lost" : fr;
     const u = mkUnit(d, { side: x.side || "me", t: ty, name: x.name, front, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng, cab: x.cab || "", branch: x.branch });
     u.id = x.id; if (!ty && x.cls) u.tname = x.cls; if (x.branch && d.branches.some(b => b.id === x.branch)) u.branch = x.branch;
     const i = d.units.findIndex(y => y.id === x.id && y.mirror);   /* the stand-in a map marker made for it */
@@ -86,7 +86,7 @@ function mpForcesLoad() {
       (j[t] || []).forEach(g => { if (g.user === me) { if (g.side === null) { const n = mpOwnRestore(d, t, g); if (n) { changed = true; restored += n; } } return; } g.units.forEach(x => { const id = g.side === null ? x.id : "r:" + g.user + ":" + x.id; if (!d.units.some(y => y.id === id && !y.remote && !y.mirror)) want.set(id, { g, x, side: x.side || g.side }); }); });   /* never your own units, and never over a unit you hold yourself */
       d.units = d.units.filter(u => { if (u.remote && !want.has(u.id)) { changed = true; return false; } return true; });
       want.forEach(({ g, x, side }, id) => {
-        const ty = d.types.find(y => y.code === x.code), front = x.fr === "reserve" ? "reserve" : x.fr === "lost" ? "lost" : fr;
+        const ty = d.types.find(y => y.code === x.code), front = x.fr === "lost" ? "lost" : fr;
         let u = d.units.find(y => y.id === id);
         if (u && u.mirror) { delete u.mirror; u.remote = g.user; changed = true; }   /* a marker's stand-in, now that its owner's forces are in */
         const nu = { side, cab: x.cab || "", name: x.name, hp: x.hp, maxhp: x.maxhp, atk: x.atk, mov: x.mov, rng: x.rng, front, remote: g.user };

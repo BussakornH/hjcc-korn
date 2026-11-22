@@ -147,6 +147,13 @@ function toV2(o) {
   });
   o.v = 2;
 }
+/* There is no Reserve any more: every unit is ready to deploy, on the topic's first real front (made if there is none). The "reserve" front stays
+   in the data, hidden, so older saves and other chairs' copies still read; units found there are moved out. */
+function mainFront(d) {
+  let f = d.fronts.find(x => !x.fixed); if (!f) { f = { id: uid("f"), name: "Front line" }; const i = d.fronts.findIndex(x => x.id === "lost"); i < 0 ? d.fronts.push(f) : d.fronts.splice(i, 0, f); }
+  return f.id;
+}
+const noRes = (d, f) => !f || f === "reserve" ? mainFront(d) : f;
 function migrate(o) {
   if (!o.topics) o.topics = {};
   if ((o.v || 1) < 2) toV2(o);
@@ -160,6 +167,7 @@ function migrate(o) {
     d.branches.forEach(b => { if (!/^#[0-9a-f]{3,8}$/i.test(b.color)) b.color = "#8a8f98"; });   /* colours go into style="" as they are: anything in a saved or imported file that is not a plain hex colour is replaced */
     if (!d.fronts.some(x => x.id === "reserve")) d.fronts.unshift(f.fronts[0]);
     if (!d.fronts.some(x => x.id === "lost")) d.fronts.push(f.fronts[f.fronts.length - 1]);
+    (d.units || []).forEach(u => { if (u.front === "reserve") u.front = mainFront(d); });
   });
   if (!TOPICS[o.topic]) o.topic = "t1";
   return o;
@@ -232,7 +240,7 @@ function snap(d) {
 function setHp(d, u, v) {
   u.hp = clamp(r2(v), 0, num(u.maxhp));
   if (!(u.hp > 0)) { if (d.rules.autoLost) u.front = "lost"; }
-  else if (u.front === "lost") u.front = "reserve";
+  else if (u.front === "lost") u.front = mainFront(d);
 }
 function moveTo(d, u, f) {
   if (u.front === f) return;
@@ -248,7 +256,7 @@ function mkUnit(d, o) {
     id: uid("u"), side: o.side, name: o.name, type: t ? t.id : "", tcode: t ? t.code : "", tname: t ? t.name : "Custom unit",
     branch: t ? t.branch : (o.branch || d.branches[0].id),
     hp: num(o.hp, t ? t.hp : 1), maxhp: num(o.maxhp, t ? t.hp : 1), atk: num(o.atk, t ? t.atk : 0), mov: num(o.mov, t ? t.mov : 0), rng: num(o.rng, t ? t.rng : 0),
-    front: o.front || "reserve", ord: 1 + Math.max(0, ...d.units.filter(x => x.front === (o.front || "reserve")).map(x => num(x.ord))), notes: o.notes || "", cab: o.cab || ""
+    front: noRes(d, o.front), ord: 1 + Math.max(0, ...d.units.filter(x => x.front === noRes(d, o.front)).map(x => num(x.ord))), notes: o.notes || "", cab: o.cab || ""
   };
 }
 function nextNum(d, base) { const re = new RegExp("^" + reEsc(base) + " (\\d+)$"); let m = 0; d.units.forEach(u => { const x = re.exec(u.name); if (x) m = Math.max(m, +x[1]); }); return m + 1; }
@@ -463,7 +471,7 @@ const ADMIN_PAGES = [{ id: "status", name: "System status", icon: "pulse" }, { i
 const pages = () => ROLE === "admin" ? ADMIN_PAGES : PAGES.filter(p => p.id !== "settings");   /* a chair gets every page but the admin's settings */
 const seg = (a, opts, cur, key) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button class="${v === cur ? "on" : ""}" data-a="${a}" data-${key}="${v}" aria-pressed="${v === cur}">${esc(l)}</button>`).join("")}</div>`;
 const swBtn = (k, on) => `<span class="sw-w">${on ? "ON" : "OFF"}<button class="sw ${on ? "on" : ""}" role="switch" aria-checked="${!!on}" aria-label="${esc(RULE_L[k] || k)}" data-a="rule" data-k="${k}"><i></i></button></span>`;
-const frontOpts = (cur, noLost) => D().fronts.filter(f => !(noLost && f.id === "lost")).map(f => `<option value="${f.id}" ${f.id === cur ? "selected" : ""}>${esc(f.name)}</option>`).join("");
+const frontOpts = (cur, noLost) => D().fronts.filter(f => f.id !== "reserve" && !(noLost && f.id === "lost")).map(f => `<option value="${f.id}" ${f.id === cur ? "selected" : ""}>${esc(f.name)}</option>`).join("");
 const typeOpts = cur => D().branches.map(b => { const T = D().types.filter(t => t.branch === b.id); return T.length ? `<optgroup label="${esc(b.name)}">${T.map(t => `<option value="${t.id}" ${t.id === cur ? "selected" : ""}>${esc(t.name)} (${esc(t.code)})</option>`).join("")}</optgroup>` : ""; }).join("") + (() => { const O = D().types.filter(t => !D().branches.some(b => b.id === t.branch)); return O.length ? `<optgroup label="Other">${O.map(t => `<option value="${t.id}" ${t.id === cur ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</optgroup>` : ""; })();
 
 /* access levels: the Admin runs rules, data and accounts; a chair runs every force, the map, morale, sides, rules and the combat calculator.
@@ -869,7 +877,7 @@ function pgOverview() {
   const f0 = H.length ? H[0][s] : null;
   const dl = (now, was, goodUp = true) => { if (was == null) return ""; const v = r2(now - was); if (!v) return '<span class="dlt" title="Since tracking started">no change</span>'; const up = v > 0; return `<span class="dlt ${up === goodUp ? "up" : "dn"}" title="Since tracking started">${up ? "▲" : "▼"} ${fx(Math.abs(v))}</span>`; };
   const tiles = [
-    ["var(--accent)", "Units in the field", T.n, `${T.all} raised · ${T.reserve} in reserve`, last("n"), dl(T.n, f0 && f0.n)],
+    ["var(--accent)", "Units in the field", T.n, `${T.all} raised`, last("n"), dl(T.n, f0 && f0.n)],
     ["var(--good)", "Hit points", fx(T.hp), `of ${fx(T.max)} · ${strP}% strength`, last("hp"), dl(T.hp, f0 && f0.hp)],
     ["var(--gold)", "Attack power", fx(T.atk), `effective · ${fx(T.atkField)} on the fronts`, last("atk"), dl(T.atk, f0 && f0.atk)],
     ["var(--bad)", "Losses", T.lost, `${plural(T.lost, "unit")} destroyed · ${fx(T.max - T.hp)} HP lost`, H.slice(-40).map(h => h[s].max - h[s].hp), ""]
@@ -1050,14 +1058,14 @@ function pgBoard() {
     </section>`;
   };
   const deadPanel = (col, n) => `<div class="dead-mid"><div class="panel${foldCls("dead")}">${ph("dead", "Destroyed", `${plural(n, "unit")} · both sides`, "", `${plural(n, "unit")} destroyed`)}<div class="fold-body">${col}</div></div></div>`;
-  /* both sides: one half per side with a line down the middle. Reserve sits on the outer edge, deployed fronts next to the line. */
+  /* both sides: one half per side with a line down the middle. There is no Reserve: every unit is on a front, ready to deploy. */
   const half = (sd, flip) => {
-    const live = d.fronts.map((f, i) => [f, i]).filter(x => x[0].id !== "lost"), order = flip ? live.slice().reverse() : live;
+    const live = d.fronts.map((f, i) => [f, i]).filter(x => x[0].id !== "lost" && x[0].id !== "reserve"), order = flip ? live.slice().reverse() : live;
     return `<div class="half ${sd}"><header class="half-h"><b>${esc(sideLbl(sd))}</b></header><div class="half-cols">${order.map(x => mk(x[0], x[1], sd)).join("")}</div></div>`;
   };
-  const neuN = d.units.filter(u => u.side === "ne" && vis(u)).length, neu = ROLE === "chair" && neuN ? `<div class="dead-mid neu-mid"><div class="panel${foldCls("neu")}">${ph("neu", "Neutral parties", `${plural(neuN, "unit")} · they pick a side later`, "", plural(neuN, "unit"))}<div class="fold-body"><div class="half ne"><div class="half-cols">${d.fronts.map((f, i) => f.id === "lost" ? "" : mk(f, i, "ne")).join("")}</div></div></div></div></div>` : "";
-  const board = side === "both" ? `<div class="board split" id="board" data-keep="board">${half("me", false)}<div class="half-mid" role="separator" aria-hidden="true"></div>${half("foe", true)}${neu}${d.fronts.map((f, i) => f.id === "lost" ? deadPanel(mk(f, i, null), d.units.filter(u => u.front === "lost" && vis(u)).length) : "").join("")}</div>` : `<div class="board" id="board" data-keep="board">${d.fronts.map((f, i) => mk(f, i, null)).join("")}</div>`;
-  return head("Order of battle", "Drag a card between Reserve, the front line and Destroyed (on a tablet: press and hold, then drag). Click a card to edit it. Drop cards on the battle tray below to set up an engagement.", DEL ? "" : seg("boardSide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["both", "Both sides"]], side, "s")) + cabBar() + `
+  const neuN = d.units.filter(u => u.side === "ne" && vis(u)).length, neu = ROLE === "chair" && neuN ? `<div class="dead-mid neu-mid"><div class="panel${foldCls("neu")}">${ph("neu", "Neutral parties", `${plural(neuN, "unit")} · they pick a side later`, "", plural(neuN, "unit"))}<div class="fold-body"><div class="half ne"><div class="half-cols">${d.fronts.map((f, i) => f.id === "lost" || f.id === "reserve" ? "" : mk(f, i, "ne")).join("")}</div></div></div></div></div>` : "";
+  const board = side === "both" ? `<div class="board split" id="board" data-keep="board">${half("me", false)}<div class="half-mid" role="separator" aria-hidden="true"></div>${half("foe", true)}${neu}${d.fronts.map((f, i) => f.id === "lost" ? deadPanel(mk(f, i, null), d.units.filter(u => u.front === "lost" && vis(u)).length) : "").join("")}</div>` : `<div class="board" id="board" data-keep="board">${d.fronts.map((f, i) => f.id === "reserve" ? "" : mk(f, i, null)).join("")}</div>`;
+  return head("Order of battle", "Every unit is on the front line, ready to deploy. Drag a card to Destroyed and back (on a tablet: press and hold, then drag). Click a card to edit it. Drop cards on the battle tray below to set up an engagement.", DEL ? "" : seg("boardSide", [["me", sideLbl("me")], ["foe", sideLbl("foe")], ["both", "Both sides"]], side, "s")) + cabBar() + `
   <div class="toolbar">
     <label class="search">${ico("search")}<input id="q" type="search" placeholder="Search units" value="${esc(UI.q)}" data-i="q" aria-label="Search units"></label>
     <div class="chips">${d.branches.map(b => `<button class="chip ${UI.br === b.id ? "on" : ""}" data-a="br" data-b="${b.id}" aria-pressed="${UI.br === b.id}"><i style="background:${b.color}"></i>${esc(b.name)}</button>`).join("")}</div>
@@ -1298,7 +1306,7 @@ function trialText() {
 function pgSettings() {
   const d = D(), T = TOPICS[S.topic];
   const sideF = s => `<div class="fld"><label for="sn-${s}">${s === "me" ? "Your side" : "The enemy"}</label><input id="sn-${s}" value="${esc(d.sides[s].name)}" data-c="sideName" data-s="${s}" maxlength="40"><div class="sug">${T.suggest.map(n => `<button data-a="sidePick" data-s="${s}" data-v="${esc(n)}">${esc(n)}</button>`).join("")}</div></div>`;
-  const fronts = d.fronts.map((f, i) => { const n = d.units.filter(u => u.front === f.id).length; return `<div class="fr-row">${f.fixed ? `<span class="fixed">${esc(f.name)} <small>(fixed)</small></span>` : `<input class="in" value="${esc(f.name)}" data-c="frontName" data-f="${f.id}" id="fr-${f.id}" maxlength="40" aria-label="Front name">`}<small>${plural(n, "unit")}</small><span class="btns">${f.fixed ? "" : `<button class="icon-btn sm" data-a="frontMove" data-f="${f.id}" data-d="-1" ${i <= 1 ? "disabled" : ""} aria-label="Move up">${ico("up")}</button><button class="icon-btn sm" data-a="frontMove" data-f="${f.id}" data-d="1" ${i >= d.fronts.length - 2 ? "disabled" : ""} aria-label="Move down">${ico("down")}</button><button class="icon-btn sm" data-a="frontDel" data-f="${f.id}" aria-label="Delete front">${ico("trash")}</button>`}</span></div>`; }).join("");
+  const fronts = d.fronts.map((f, i) => f.id === "reserve" ? "" : (() => { const n = d.units.filter(u => u.front === f.id).length; return `<div class="fr-row">${f.fixed ? `<span class="fixed">${esc(f.name)} <small>(fixed)</small></span>` : `<input class="in" value="${esc(f.name)}" data-c="frontName" data-f="${f.id}" id="fr-${f.id}" maxlength="40" aria-label="Front name">`}<small>${plural(n, "unit")}</small><span class="btns">${f.fixed ? "" : `<button class="icon-btn sm" data-a="frontMove" data-f="${f.id}" data-d="-1" ${i <= 1 ? "disabled" : ""} aria-label="Move up">${ico("up")}</button><button class="icon-btn sm" data-a="frontMove" data-f="${f.id}" data-d="1" ${i >= d.fronts.length - 2 ? "disabled" : ""} aria-label="Move down">${ico("down")}</button><button class="icon-btn sm" data-a="frontDel" data-f="${f.id}" aria-label="Delete front">${ico("trash")}</button>`}</span></div>`; })()).join("");
   return head("Allocation &amp; data", "") + `
   <section class="set-grid">
     <div class="panel"><div class="panel-h"><div><h3>Allocation</h3><p>Fill this in when the chairs send allocations. The side names are used everywhere in the tracker.</p></div></div>
@@ -1370,7 +1378,7 @@ function openAdd(front, side, typeId) {
     ${CABS().length ? `<div class="fld span4"><label for="adCab">Country</label><select id="adCab" data-c="adCab">${cabOpts(cab0)}</select></div>` : ""}
     <div class="fld span2"><label for="adType">Sub class</label><select id="adType" data-c="adType">${typeOpts(tb ? tb.id : "")}<option value="">Custom unit</option></select></div>
     <div class="fld"><label for="adQty">How many</label><input id="adQty" type="number" min="1" max="60" step="1" value="1" data-i="adQty"></div>
-    <div class="fld"><label for="adFront">Front</label><select id="adFront">${frontOpts(front && front !== "lost" ? front : "reserve", true)}</select></div>
+    <div class="fld"><label for="adFront">Front</label><select id="adFront">${frontOpts(front && front !== "lost" && front !== "reserve" ? front : mainFront(D()), true)}</select></div>
     <div class="fld span4"><label for="adName">Name</label><input id="adName" value="${esc(t0 ? t0.name : "Unit")}" maxlength="50" data-i="adName"><small id="adHint"></small></div>
     <div class="fld"><label for="adAtk">Attack</label><input id="adAtk" type="number" min="0" step="0.5" value="${t0 ? fx(t0.atk) : 0}"></div>
     <div class="fld"><label for="adHp">Full HP</label><input id="adHp" type="number" min="0.5" step="0.5" value="${t0 ? fx(t0.hp) : 1}"></div>
@@ -1387,7 +1395,7 @@ function addHint() {
 }
 function submitAdd() {
   const d = D(), side = (document.querySelector('input[name="adSide"]:checked') || {}).value || "me", t = d.types.find(x => x.id === $("adType").value);
-  const q = clamp(Math.round(num($("adQty").value, 1)), 1, 60), front = $("adFront").value || "reserve", base = ($("adName").value.trim() || (t ? t.name : "Unit")).slice(0, 50), exact = q === 1 && $("adName").dataset.t === "1";
+  const q = clamp(Math.round(num($("adQty").value, 1)), 1, 60), front = $("adFront").value || mainFront(D()), base = ($("adName").value.trim() || (t ? t.name : "Unit")).slice(0, 50), exact = q === 1 && $("adName").dataset.t === "1";
   const st = { atk: clamp(num($("adAtk").value), 0, STAT_MAX), maxhp: clamp(num($("adHp").value), 0, HP_MAX), mov: clamp(num($("adMov").value), 0, STAT_MAX), rng: clamp(num($("adRng").value), 0, STAT_MAX) };
   if (!(st.maxhp > 0)) { toast("Full HP must be more than 0"); $("adHp").focus(); return; }
   const cab = $("adCab") && cabById($("adCab").value) ? $("adCab").value : ""; UI.lastCab = cab;
@@ -1400,7 +1408,7 @@ function submitAdd() {
 function loadSample(quiet) {
   const P = TOPICS[S.topic].sample, step = 17 * 60000, t0 = Date.now() - (P.fights.length + 1) * step;
   act(null, d => {
-    const fr = d.fronts.filter(f => f.id !== "lost");
+    const fr = d.fronts.filter(f => f.id !== "lost" && f.id !== "reserve");
     const add = (side, code, n, fi) => { const t = d.types.find(x => x.code === code); if (!t) return; const f = fr[Math.min(fi, fr.length - 1)]; let k = nextNum(d, t.name); for (let i = 0; i < n; i++) d.units.push(mkUnit(d, { side, t, name: `${t.name} ${k++}`, front: f.id })); };
     P.me.forEach(x => add("me", ...x)); P.foe.forEach(x => add("foe", ...x));
     if (d.sides.me.morale === 50) d.sides.me.morale = 65;
@@ -1606,7 +1614,7 @@ const A = {
   frontAdd: () => askText("Add a front", "Name of the front or theatre", "", v => act(`Front added: ${v}`, d => { d.fronts.splice(d.fronts.length - 1, 0, { id: uid("f"), name: v }); }, "edit")),
   frontRename: el => { const f = frontById(el.dataset.f); if (!f) return; UI.colMenu = null; askText("Rename front", "New name", f.name, v => { if (v !== f.name) act(`Front renamed: ${f.name} → ${v}`, d => { d.fronts.find(x => x.id === f.id).name = v; }, "edit"); }); },
   frontMove: el => { const id = el.dataset.f, dir = num(el.dataset.d); act(null, d => { const i = d.fronts.findIndex(x => x.id === id), j = i + dir; if (i < 0 || j < 1 || j > d.fronts.length - 2) return; const [f] = d.fronts.splice(i, 1); d.fronts.splice(j, 0, f); }); },
-  frontDel: el => arm(el, () => { const id = el.dataset.f, f = frontById(id); if (!f) return; const n = D().units.filter(u => u.front === id).length; UI.colMenu = null; act(`Front removed: ${f.name}${n ? ` (${plural(n, "unit")} moved to Reserve)` : ""}`, d => { d.units.forEach(u => { if (u.front === id) u.front = "reserve"; }); d.fronts = d.fronts.filter(x => x.id !== id); }, "remove"); }),
+  frontDel: el => arm(el, () => { const id = el.dataset.f, f = frontById(id); if (!f) return; const n = D().units.filter(u => u.front === id).length; UI.colMenu = null; act(`Front removed: ${f.name}${n ? ` (${plural(n, "unit")} moved to the next front)` : ""}`, d => { d.fronts = d.fronts.filter(x => x.id !== id); const to = mainFront(d); d.units.forEach(u => { if (u.front === id) u.front = to; }); }, "remove"); }),
   rtoggle: el => { const k = el.dataset.k; UI.open[k] = !UI.open[k]; saveUI(); render(); },
   fold: el => { const k = el.dataset.k, f = !UI.fold[k]; if (f) UI.fold[k] = true; else delete UI.fold[k]; saveUI(); applyFold(k, f); },
   foldAll: el => { const on = el.dataset.v === "1"; el.dataset.k.split(",").forEach(k => { if ((!!UI.fold[k]) === on) return; if (on) UI.fold[k] = true; else delete UI.fold[k]; applyFold(k, on); }); saveUI(); },

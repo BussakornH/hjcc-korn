@@ -51,10 +51,13 @@ The first time, a chair's device hands in the rules it already has; resetting a 
 A unit's attack, movement and range stop at 1000 and its HP at 100000, here and on the server.
 When a session ends (12 hours, or a password reset) the next thing the page asks the server for sends that tab back to sign-in.
 
+## No Reserve
+Every unit is ready to deploy: there is no Reserve column on the Order of Battle and no Reserve list on the war map. New units, booklet units and units brought back from Destroyed go on the topic's first front; units an older save or another chair's copy still has in Reserve are moved there. The `reserve` front stays in the data, hidden.
+
 ## Cabinets (Topic 2)
 Topic 2 has nine cabinets: Spain, Germany, Austria-Hungary, Ottoman, USA, France, Britain, Russia and the Netherlands (`presets.js`, `cabinets`).
 Each has its order of battle from its Military Resources Booklet (`booklets`, keyed by cabinet); "Load booklet forces" loads every cabinet in one click ("Pick cabinets…" loads only the ticked ones)
-in Reserve, leaves out units the booklet lists as Not Found, and never adds a unit a cabinet already has. A unit's cabinet (`cab`) travels with it
+on the front line, leaves out units the booklet lists as Not Found, and never adds a unit a cabinet already has. A unit's cabinet (`cab`) travels with it
 to the other chairs and onto the map, where its troops carry the cabinet's tag. On the battle map a chair can hide either side or any cabinet
 (this screen only) and select several units to put down with one click.
 
